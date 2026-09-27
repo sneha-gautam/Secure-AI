@@ -1,0 +1,31 @@
+parameterized_query -> PENDING_APPROVAL
+--- app.py (before)
++++ app.py (after)
+@@ -1,9 +1,4 @@
+-    if VULN_SQLI_ENABLED:
+
+-        # INTENTIONALLY VULNERABLE — controlled test state only, toggled via env var
+
+-        sql = f"SELECT username, comment FROM comments WHERE comment LIKE '%{query}%'"
+
+-        results = conn.execute(sql).fetchall()
+
+-    else:
+
+-        results = conn.execute(
+
+-            "SELECT username, comment FROM comments WHERE comment LIKE ?",
+
+-            (f"%{query}%",)
+
+-        ).fetchall()
+
++    results = conn.execute(
+
++        "SELECT username, comment FROM comments WHERE comment LIKE ?",
+
++        (f"%{query}%",)
+
++    ).fetchall()
+
+---
