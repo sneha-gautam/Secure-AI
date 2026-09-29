@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SecureAI{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% import 'macros.html' as m %}
+<aside class="sidebar">
+    <div class="sidebar-brand">
+        <div class="brand-icon">{{ m.icon('shield', 18) }}</div>
+        <div>
+            <div class="brand-name font-display">Secure<span>AI</span></div>
+            <div class="brand-sub">Web security</div>
+        </div>
+    </div>
+    <nav>
+        <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">{{ m.icon('dashboard') }}Dashboard</a>
+        <a href="/scan" class="{{ 'active' if active == 'scan' else '' }}">{{ m.icon('scan') }}Scan</a>
+        <a href="/findings" class="{{ 'active' if active == 'findings' else '' }}">{{ m.icon('list-checks') }}Findings</a>
+        <a href="/remediation" class="{{ 'active' if active == 'remediation' else '' }}">{{ m.icon('sparkles') }}Remediation</a>
+        <a href="/verification" class="{{ 'active' if active == 'verification' else '' }}">{{ m.icon('shield') }}Verification</a>
+    </nav>
+    <div class="sidebar-footer">
+        <div class="status-dot-wrap">
+            <span class="status-dot"><span class="ping"></span><span></span></span>
+            Prototype environment
+        </div>
+    </div>
+</aside>
+<main>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</main>
+</body>
+</html>

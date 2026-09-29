@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% import 'macros.html' as m %}
+{% block title %}Scan Application — SecureAI{% endblock %}
+{% block content %}
+
+{{ m.page_header("New scan", "Scan application", "Check the target for the most common web security issues.") }}
+
+<div class="scan-grid">
+    <div class="panel">
+        <label for="target" style="font-size:14px; font-weight:600;">Target application</label>
+        <div class="scan-target-row">
+            <input id="target" class="scan-input" value="https://demo.secureai.app">
+            <button id="scan-btn" class="btn btn-primary">{{ m.icon('scan') }}<span id="scan-btn-label">Start Scan</span></button>
+        </div>
+        <p class="scan-hint">This prototype uses mock results and does not send any requests.</p>
+
+        <div class="scan-progress-block">
+            <div class="scan-progress-label">
+                <span style="font-weight:500;">Scan progress</span>
+                <span id="progress-pct">0%</span>
+            </div>
+            <div class="progress-track"><div id="progress-fill" class="progress-fill" style="width:0%"></div></div>
+            <p class="scan-hint" id="progress-text">Ready to scan</p>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2 class="font-display" style="font-size:18px; margin:0 0 18px 0;">Security checks</h2>
+        <div id="checks-list">
+            <div class="check-item" data-threshold="30">
+                <span class="check-icon">{{ m.icon('circle', 12) }}</span>
+                <div><div class="check-title">SQL Injection</div><div class="check-sub">Waiting</div></div>
+            </div>
+            <div class="check-item" data-threshold="60">
+                <span class="check-icon">{{ m.icon('circle', 12) }}</span>
+                <div><div class="check-title">Cross-Site Scripting (XSS)</div><div class="check-sub">Waiting</div></div>
+            </div>
+            <div class="check-item" data-threshold="90">
+                <span class="check-icon">{{ m.icon('circle', 12) }}</span>
+                <div><div class="check-title">Security Headers</div><div class="check-sub">Waiting</div></div>
+            </div>
+        </div>
+        <a href="/findings" id="review-btn" class="btn btn-primary btn-block" style="display:none; margin-top:18px;">Review findings</a>
+    </div>
+</div>
+
+<script>
+const btn = document.getElementById('scan-btn');
+const btnLabel = document.getElementById('scan-btn-label');
+const fill = document.getElementById('progress-fill');
+const pct = document.getElementById('progress-pct');
+const text = document.getElementById('progress-text');
+const items = document.querySelectorAll('.check-item');
+const reviewBtn = document.getElementById('review-btn');
+
+let progress = 0;
+let timer = null;
+
+const icons = {
+    circle: `{{ m.icon('circle', 12) }}`,
+    loader: `{{ m.icon('loader', 12) }}`,
+    check: `{{ m.icon('check', 12) }}`
+};
+
+function render() {
+    fill.style.width = progress + '%';
+    pct.textContent = progress + '%';
+    text.textContent = progress === 0 ? 'Ready to scan'
+        : progress < 100 ? 'Reviewing application routes and responses...'
+        : 'Scan complete — 3 findings detected.';
+
+    items.forEach(item => {
+        const threshold = parseInt(item.dataset.threshold);
+        const iconEl = item.querySelector('.check-icon');
+        const sub = item.querySelector('.check-sub');
+        const done = progress >= threshold;
+        const active = progress > (threshold - 30) && !done;
+        iconEl.classList.toggle('done', done);
+        iconEl.classList.toggle('active', active);
+        iconEl.innerHTML = done ? icons.check : active ? icons.loader : icons.circle;
+        sub.textContent = done ? 'Check complete' : active ? 'Checking...' : 'Waiting';
+    });
+
+    if (progress === 100) {
+        btnLabel.textContent = 'Scan Again';
+        btn.disabled = false;
+        reviewBtn.style.display = 'flex';
+    }
+}
+
+btn.addEventListener('click', () => {
+    progress = 1;
+    btn.disabled = true;
+    btnLabel.textContent = 'Scanning...';
+    reviewBtn.style.display = 'none';
+    render();
+    timer = setInterval(() => {
+        progress = Math.min(100, progress + 4);
+        render();
+        if (progress >= 100) clearInterval(timer);
+    }, 120);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import 'macros.html' as m %}
+{% block title %}Dashboard — SecureAI{% endblock %}
+{% block content %}
+
+{% call m.page_header("Security overview", "Good morning, Sneha", "Here is the current security posture for your target application.") %}
+    <a href="/scan" class="btn btn-primary">{{ m.icon('scan') }}Start Scan</a>
+{% endcall %}
+
+<div class="grid-3">
+    <div class="panel accent-edge">
+        <div class="stat-label">Security Score</div>
+        <div class="stat-value font-display">72<span class="stat-of">/ 100</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width: 72%"></div></div>
+    </div>
+    <div class="panel">
+        <div class="stat-row">
+            <div>
+                <div class="stat-label">Open Findings</div>
+                <div class="stat-value font-display">3</div>
+            </div>
+            <div class="icon-box danger">{{ m.icon('alert', 18) }}</div>
+        </div>
+        <div class="stat-note"><b>1 high risk</b> needs attention</div>
+    </div>
+    <div class="panel">
+        <div class="stat-row">
+            <div>
+                <div class="stat-label">Last Scan</div>
+                <div class="stat-value small font-display">Today, 09:42</div>
+            </div>
+            <div class="icon-box success">{{ m.icon('calendar-clock', 18) }}</div>
+        </div>
+        <div class="stat-note">Completed in 38 seconds</div>
+    </div>
+</div>
+
+<div class="panel no-pad">
+    <div class="panel-head">
+        <div>
+            <h2>Recent Findings</h2>
+            <p>From the latest scan of demo.secureai.app</p>
+        </div>
+        <a href="/findings" class="btn btn-ghost">View all {{ m.icon('arrow-right', 14) }}</a>
+    </div>
+    {% for f in findings %}
+    <a href="/remediation?finding={{ f.name }}" class="finding-row">
+        <div class="finding-name">
+            <span class="finding-icon">{{ m.icon('shield', 16) }}</span>
+            {{ f.name }}
+        </div>
+        <div class="finding-path">{{ f.path }}</div>
+        {{ m.status_pill(f.level, f.tone) }}
+        {{ m.icon('arrow-right', 16) }}
+    </a>
+    {% endfor %}
+</div>
+
+{% endblock %}
