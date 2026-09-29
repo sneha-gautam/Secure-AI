@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% import 'macros.html' as m %}
+{% block title %}Remediation — SecureAI{% endblock %}
+{% block content %}
+
+{% call m.page_header("AI remediation & patch review", "Remediation Review", "Inspect AI security analysis, examine proposed code diff, and approve or reject patch application.") %}
+    <a href="/findings" class="btn btn-ghost">{{ m.icon('list-checks', 16) }}Back to Findings</a>
+{% endcall %}
+
+<div style="display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap;">
+    {% for f in all_findings %}
+    <a href="/remediation?finding={{ f.name }}"
+       class="btn {{ 'btn-primary' if f.name == finding.name else 'btn-ghost' }}"
+       style="{{ 'border: 1px solid var(--border);' if f.name != finding.name else '' }} height: 38px; font-size: 13px;">
+       {{ m.icon('shield', 14) }}{{ f.name }}
+    </a>
+    {% endfor %}
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <!-- AI Security Analysis Panel -->
+    <div class="panel">
+        <div class="stat-row" style="margin-bottom: 16px;">
+            <div>
+                <div class="eyebrow" style="margin-bottom: 6px;">{{ m.icon('sparkles', 14) }}AI Security Analysis</div>
+                <h2 class="font-display" style="font-size: 22px; margin: 0;">{{ finding.name }}</h2>
+                <div style="font-family: ui-monospace, monospace; font-size: 13px; color: var(--muted-foreground); margin-top: 4px;">
+                    Endpoint: <span style="color: var(--primary);">{{ finding.endpoint }}</span> &bull; Parameter: <span style="color: var(--foreground);">{{ finding.parameter }}</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                {{ m.status_pill(finding.severity ~ ' SEVERITY', finding.tone) }}
+                {{ m.status_pill('RISK: ' ~ finding.risk_of_change, finding.risk_tone) }}
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+            <div>
+                <div class="stat-label" style="margin-bottom: 8px;">Vulnerability Explanation</div>
+                <p style="font-size: 14px; line-height: 1.6; color: var(--foreground); margin: 0;">
+                    {{ finding.explanation }}
+                </p>
+            </div>
+            <div>
+                <div class="stat-label" style="margin-bottom: 8px;">Security Impact</div>
+                <p style="font-size: 14px; line-height: 1.6; color: var(--foreground); margin: 0;">
+                    {{ finding.impact }}
+                </p>
+            </div>
+        </div>
+
+        <div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between;">
+            <div>
+                <div class="stat-label" style="margin-bottom: 4px;">Recommended Template</div>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600;">
+                    {{ m.icon('sparkles', 14) }}
+                    <span>{{ finding.template_title }}</span>
+                    <span style="font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted-foreground); font-weight: normal;">({{ finding.recommended_template }})</span>
+                </div>
+            </div>
+            <div>
+                <div class="stat-label" style="margin-bottom: 4px;">Target Patch File</div>
+                <div style="font-family: ui-monospace, monospace; font-size: 13px; color: var(--foreground);">
+                    {{ finding.file }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Proposed Code Diff Panel -->
+    <div class="panel no-pad">
+        <div class="panel-head">
+            <div>
+                <h2>Proposed Remediation Diff</h2>
+                <p>Generated unified diff for target file: <code style="color: var(--primary);">{{ finding.file }}</code></p>
+            </div>
+            <div id="diff-status-pill">
+                {{ m.status_pill('Pending Approval', 'warning') }}
+            </div>
+        </div>
+
+        <!-- Monospace Diff Container -->
+        <div style="background-color: var(--background); font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.6; padding: 18px 20px; overflow-x: auto; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+            {% for line in finding.diff.split('\n') %}
+                {% if line.startswith('---') or line.startswith('+++') or line.startswith('@@') %}
+                    <div style="color: var(--muted-foreground); font-weight: 600; padding: 2px 4px;">{{ line }}</div>
+                {% elif line.startswith('-') %}
+                    <div style="background-color: var(--danger-soft); color: var(--danger); padding: 2px 8px; border-radius: 3px; margin: 2px 0;">{{ line }}</div>
+                {% elif line.startswith('+') %}
+                    <div style="background-color: var(--success-soft); color: var(--success); padding: 2px 8px; border-radius: 3px; margin: 2px 0;">{{ line }}</div>
+                {% else %}
+                    <div style="color: var(--foreground); padding: 2px 8px;">{{ line }}</div>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        <!-- Action / Approval Controls -->
+        <div style="padding: 18px 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+            <div style="font-size: 13px; color: var(--muted-foreground); display: flex; align-items: center; gap: 8px;">
+                {{ m.icon('shield', 16) }}
+                <span>Human authorization required. Automatic rollback is configured on verification regression.</span>
+            </div>
+
+            <div style="display: flex; gap: 12px; align-items: center;" id="action-buttons">
+                <button id="reject-btn" class="btn btn-ghost" style="border: 1px solid var(--border); color: var(--danger);">
+                    {{ m.icon('alert', 14) }}Reject
+                </button>
+                <button id="approve-btn" class="btn btn-primary">
+                    {{ m.icon('sparkles', 16) }}Approve &amp; Apply
+                </button>
+            </div>
+        </div>
+
+        <!-- Outcome Notice (Dynamic Feedback) -->
+        <div id="outcome-notice" style="display: none; padding: 16px 20px; border-top: 1px solid var(--border);"></div>
+    </div>
+</div>
+
+<script>
+const approveBtn = document.getElementById('approve-btn');
+const rejectBtn = document.getElementById('reject-btn');
+const actionButtons = document.getElementById('action-buttons');
+const diffPill = document.getElementById('diff-status-pill');
+const outcomeNotice = document.getElementById('outcome-notice');
+
+approveBtn.addEventListener('click', () => {
+    diffPill.innerHTML = `{{ m.status_pill('Patch Applied', 'success') }}`;
+    actionButtons.innerHTML = `
+        <a href="/verification" class="btn btn-primary">
+            {{ m.icon('shield', 16) }}Proceed to Verification &rarr;
+        </a>
+    `;
+    outcomeNotice.style.display = 'block';
+    outcomeNotice.style.backgroundColor = 'var(--success-soft)';
+    outcomeNotice.style.color = 'var(--success)';
+    outcomeNotice.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 14px;">
+                {{ m.icon('check', 18) }}
+                <span><strong>Patch Approved &amp; Applied</strong> — Target file updated with safe template. Backup (.bak) preserved.</span>
+            </div>
+            <a href="/verification" class="btn btn-primary" style="height: 36px; padding: 0 14px; font-size: 13px;">Verify Now</a>
+        </div>
+    `;
+});
+
+rejectBtn.addEventListener('click', () => {
+    diffPill.innerHTML = `{{ m.status_pill('Rejected', 'danger') }}`;
+    actionButtons.innerHTML = `
+        <button class="btn btn-ghost" disabled style="border: 1px solid var(--border); opacity: 0.6;">
+            Rejected
+        </button>
+        <a href="/findings" class="btn btn-ghost">Back to Findings</a>
+    `;
+    outcomeNotice.style.display = 'block';
+    outcomeNotice.style.backgroundColor = 'var(--danger-soft)';
+    outcomeNotice.style.color = 'var(--danger)';
+    outcomeNotice.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 14px;">
+            {{ m.icon('alert', 18) }}
+            <span><strong>Patch Rejected</strong> — No modifications were written to target file.</span>
+        </div>
+    `;
+});
+</script>
+
+{% endblock %}

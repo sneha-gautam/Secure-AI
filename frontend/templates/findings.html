@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import 'macros.html' as m %}
+{% block title %}Findings — SecureAI{% endblock %}
+{% block content %}
+
+{% call m.page_header("Vulnerability inventory", "Security Findings", "All vulnerabilities identified by the automated scanner and independently validated.") %}
+    <a href="/scan" class="btn btn-ghost">{{ m.icon('scan') }}New Scan</a>
+{% endcall %}
+
+<div class="grid-3">
+    <div class="panel">
+        <div class="stat-row">
+            <div>
+                <div class="stat-label">Total Findings</div>
+                <div class="stat-value font-display">{{ findings|length }}</div>
+            </div>
+            <div class="icon-box danger">{{ m.icon('alert', 18) }}</div>
+        </div>
+        <div class="stat-note"><b>3 confirmed</b> vulnerabilities</div>
+    </div>
+    <div class="panel">
+        <div class="stat-row">
+            <div>
+                <div class="stat-label">Severity Breakdown</div>
+                <div class="stat-value small font-display" style="margin-top: 22px;">1 High <span style="font-size: 14px; color: var(--muted-foreground); font-weight: 400;">/ 2 Medium</span></div>
+            </div>
+            <div class="icon-box danger">{{ m.icon('shield', 18) }}</div>
+        </div>
+        <div class="stat-note"><b>1 high risk</b> requires immediate fix</div>
+    </div>
+    <div class="panel">
+        <div class="stat-row">
+            <div>
+                <div class="stat-label">Validation Status</div>
+                <div class="stat-value small font-display" style="margin-top: 22px;">100% Validated</div>
+            </div>
+            <div class="icon-box success">{{ m.icon('check', 18) }}</div>
+        </div>
+        <div class="stat-note">0 false positives detected</div>
+    </div>
+</div>
+
+<div class="panel no-pad">
+    <div class="panel-head">
+        <div>
+            <h2>All Detected Findings</h2>
+            <p>Click on any finding to inspect AI security analysis and proposed remediation diff</p>
+        </div>
+        <span class="pill pill-danger">3 Actionable</span>
+    </div>
+    {% for f in findings %}
+    <a href="/remediation?finding={{ f.name }}" class="finding-row">
+        <div class="finding-name">
+            <span class="finding-icon">{{ m.icon('shield', 16) }}</span>
+            <div>
+                <div>{{ f.name }}</div>
+                {% if f.description %}
+                <div style="font-size: 12px; color: var(--muted-foreground); font-weight: 400; margin-top: 2px;">{{ f.description }}</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="finding-path">{{ f.path }}</div>
+        {{ m.status_pill(f.level, f.tone) }}
+        {{ m.icon('arrow-right', 16) }}
+    </a>
+    {% endfor %}
+</div>
+
+{% endblock %}
