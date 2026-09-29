@@ -122,6 +122,38 @@ def apply_patch(template_name):
     }
 
 
+def rollback_patch(template_name):
+    if template_name not in REMEDIATION_TEMPLATES:
+        return {
+            "status": "ROLLBACK_FAILED",
+            "reason": f"Unknown template: {template_name}",
+        }
+
+    template = REMEDIATION_TEMPLATES[template_name]
+    target_path = os.path.join(DEMO_APP_DIR, template["file"])
+    backup_path = target_path + ".bak"
+
+    if not os.path.exists(backup_path):
+        return {
+            "status": "ROLLBACK_FAILED",
+            "reason": f"Backup file does not exist: {backup_path}",
+            "file": target_path,
+        }
+
+    try:
+        shutil.copy(backup_path, target_path)
+        return {
+            "status": "ROLLED_BACK",
+            "file": target_path,
+        }
+    except Exception as e:
+        return {
+            "status": "ROLLBACK_FAILED",
+            "reason": str(e),
+            "file": target_path,
+        }
+
+
 def prepare_remediation(analysis_result):
     template_name = analysis_result["recommended_template"]
 

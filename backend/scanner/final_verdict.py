@@ -1,5 +1,7 @@
 from verification import verify_all
 from functionality import run_functionality_tests, functionality_verified
+from remediation import rollback_patch
+from ai_analysis import TEMPLATE_MAP
 
 
 def compute_verdict(security_result, functionality_passed):
@@ -12,11 +14,19 @@ def compute_verdict(security_result, functionality_passed):
     else:
         verdict = "FAILED"
 
+    rollback_result = None
+    if verdict == "REGRESSION":
+        vuln_class = security_result["vulnerability_class"]
+        template_name = TEMPLATE_MAP.get(vuln_class)
+        if template_name:
+            rollback_result = rollback_patch(template_name)
+
     return {
         "vulnerability_class": security_result["vulnerability_class"],
         "security_fixed": security_fixed,
         "functionality_passed": functionality_passed,
         "verdict": verdict,
+        "rollback_result": rollback_result,
     }
 
 
@@ -40,8 +50,11 @@ if __name__ == "__main__":
     verdicts = run_final_verdict()
 
     for v in verdicts:
-        print(
+        msg = (
             f"{v['vulnerability_class']}: {v['verdict']} "
             f"(security_fixed={v['security_fixed']}, "
             f"functionality_passed={v['functionality_passed']})"
         )
+        if v.get("rollback_result"):
+            msg += f" -> Rollback: {v['rollback_result']['status']}"
+        print(msg)
