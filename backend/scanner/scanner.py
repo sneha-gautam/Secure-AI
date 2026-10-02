@@ -1,11 +1,43 @@
 import requests
 import random
 import string
+import sys
+import os
 
-TARGET_BASE_URL = "http://127.0.0.1:5002"
+# Import the Security Model Builder
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "security_model"))
+from security_model import build_security_model
+
+# security_model.py's own sys.path.insert (for importing demo_app) runs
+# automatically when the line above executes, so demo_app is importable now.
+from app import app as demo_app
+
+MODEL = build_security_model(demo_app, base_url="http://127.0.0.1:5002")
+TARGET_BASE_URL = MODEL["base_url"]
+
+
+def get_route(path):
+    for route in MODEL["routes"]:
+        if route["path"] == path:
+            return route
+    return None
+
+
+def require_input(path, input_name):
+    """Confirms the Security Model actually knows about this endpoint/input
+    before the scanner runs a hardcoded check against it."""
+    route = get_route(path)
+    if route is None:
+        raise RuntimeError(f"Security Model has no record of route '{path}'")
+    if input_name not in route.get("inputs", []):
+        raise RuntimeError(
+            f"Security Model does not list '{input_name}' as an input on '{path}'"
+        )
 
 
 def check_sqli_search():
+    require_input("/search", "query")
+
     control_word = "Security"
     bypass_payload = "' OR '1'='1"
     malformed_payload = "'"
@@ -36,6 +68,8 @@ def check_sqli_search():
 
 
 def check_xss_comments():
+    require_input("/comments", "comment")
+
     session = requests.Session()
 
     login_resp = session.post(
@@ -62,7 +96,13 @@ def check_xss_comments():
     }
 
     return finding
+
+
 def check_security_headers():
+    route = get_route("/")
+    if route is None:
+        raise RuntimeError("Security Model has no record of route '/'")
+
     resp = requests.get(f"{TARGET_BASE_URL}/")
 
     required_headers = [
@@ -83,6 +123,7 @@ def check_security_headers():
 
     return finding
 
+
 def run_scan():
     findings = [
         check_sqli_search(),
@@ -91,7 +132,9 @@ def run_scan():
     ]
     return findings
 
+
 if __name__ == "__main__":
+    print(f"Using Security Model — base_url: {TARGET_BASE_URL}, routes discovered: {len(MODEL['routes'])}\n")
     results = run_scan()
     for finding in results:
         print(finding)

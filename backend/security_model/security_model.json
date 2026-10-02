@@ -1,0 +1,60 @@
+{
+  "application": "SecureAI Demo Application",
+  "base_url": "http://127.0.0.1:5002",
+  "routes": [
+    {
+      "path": "/",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/about",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/comments",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "inputs": [
+        "comment"
+      ]
+    },
+    {
+      "path": "/health",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/login",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "inputs": [
+        "username",
+        "password"
+      ]
+    },
+    {
+      "path": "/profile",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/search",
+      "methods": [
+        "GET"
+      ],
+      "inputs": [
+        "query"
+      ]
+    }
+  ]
+}
