@@ -194,16 +194,10 @@ def search():
 
     conn = get_db()
 
-    if VULN_SQLI_ENABLED:
-        # INTENTIONALLY VULNERABLE — controlled demo only
-        sql = f"SELECT username, comment FROM comments WHERE comment LIKE '%{query}%'"
-        results = conn.execute(sql).fetchall()
-    else:
-        # Secure version
-        results = conn.execute(
-            "SELECT username, comment FROM comments WHERE comment LIKE ?",
-            (f"%{query}%",)
-        ).fetchall()
+    results = conn.execute(
+        "SELECT username, comment FROM comments WHERE comment LIKE ?",
+        (f"%{query}%",)
+    ).fetchall()
 
     conn.close()
 
