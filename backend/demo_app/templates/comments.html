@@ -38,11 +38,7 @@
                {% for comment in comments %}
             <li>
                 <strong>{{ comment["username"] }}</strong>:
-                {% if vuln_xss_enabled %}
-                    {{ comment["comment"] | safe }}
-                {% else %}
-                    {{ comment["comment"] }}
-                {% endif %}
+                {{ comment["comment"] }}
             </li>
         {% endfor %}
     </ul>

@@ -17,7 +17,7 @@ def build_prompt(validated_finding):
     recommended_template = TEMPLATE_MAP[vuln_class]
 
     prompt = f"""You are a security analysis assistant. A vulnerability has already been
-detected and independently validated by a separate scanning system. Do not
+detected and second-pass validated by the scanning system. Do not
 question whether it is real — your job is only to explain it, assess severity,
 and justify a remediation choice from a fixed template.
 

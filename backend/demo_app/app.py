@@ -7,10 +7,9 @@ app = Flask(__name__)
 
 @app.after_request
 def set_security_headers(response):
-    if SECURITY_HEADERS_ENABLED:
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
     return response
 
 app.secret_key = "secureai-demo-secret-key"
@@ -188,15 +187,10 @@ def search():
 
     conn = get_db()
 
-    if VULN_SQLI_ENABLED:
-        # INTENTIONALLY VULNERABLE — controlled test state only, toggled via env var
-        sql = f"SELECT username, comment FROM comments WHERE comment LIKE '%{query}%'"
-        results = conn.execute(sql).fetchall()
-    else:
-        results = conn.execute(
-            "SELECT username, comment FROM comments WHERE comment LIKE ?",
-            (f"%{query}%",)
-        ).fetchall()
+    results = conn.execute(
+        "SELECT username, comment FROM comments WHERE comment LIKE ?",
+        (f"%{query}%",)
+    ).fetchall()
 
     conn.close()
 

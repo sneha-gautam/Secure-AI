@@ -1,14 +1,14 @@
 from flask import Flask, render_template, request
 
 app = Flask(__name__)
-
+ 
 findings = [
     {
         "name": "SQL Injection",
         "level": "High",
         "path": "/search",
         "tone": "danger",
-        "description": "Unsanitized user input in query parameter executed directly in SQL query.",
+        "description":"Unsanitized user input in query parameter executed directly in SQL query.",
     },
     {
         "name": "Cross-Site Scripting",

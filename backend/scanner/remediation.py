@@ -3,7 +3,7 @@ import os
 import shutil
 
 REMEDIATION_TEMPLATES = {
-    "parameterized_query": {
+        "parameterized_query": {
         "file": "app.py",
         "before": '''    if VULN_SQLI_ENABLED:
         # INTENTIONALLY VULNERABLE — controlled test state only, toggled via env var
