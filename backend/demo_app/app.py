@@ -7,9 +7,10 @@ app = Flask(__name__)
 
 @app.after_request
 def set_security_headers(response):
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    if SECURITY_HEADERS_ENABLED:
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
     return response
 
 app.secret_key = "secureai-demo-secret-key"
@@ -177,7 +178,6 @@ def about():
 @app.route("/health")
 def health():
     return "OK"
-
 @app.route("/search")
 def search():
     query = request.args.get("query", "")
@@ -187,10 +187,14 @@ def search():
 
     conn = get_db()
 
-    results = conn.execute(
-        "SELECT username, comment FROM comments WHERE comment LIKE ?",
-        (f"%{query}%",)
-    ).fetchall()
+    if VULN_SQLI_ENABLED:
+        sql = f"SELECT username, comment FROM comments WHERE comment LIKE '%{query}%'"
+        results = conn.execute(sql).fetchall()
+    else:
+        results = conn.execute(
+            "SELECT username, comment FROM comments WHERE comment LIKE ?",
+            (f"%{query}%",)
+        ).fetchall()
 
     conn.close()
 
@@ -199,7 +203,6 @@ def search():
         query=query,
         results=results
     )
-
 
 if __name__ == "__main__":
     init_db()

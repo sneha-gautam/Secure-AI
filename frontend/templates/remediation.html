@@ -123,13 +123,172 @@ const actionButtons = document.getElementById('action-buttons');
 const diffPill = document.getElementById('diff-status-pill');
 const outcomeNotice = document.getElementById('outcome-notice');
 
-approveBtn.addEventListener('click', () => {
-    diffPill.innerHTML = `{{ m.status_pill('Patch Applied', 'success') }}`;
-    actionButtons.innerHTML = `
-        <a href="/verification" class="btn btn-primary">
-            {{ m.icon('shield', 16) }}Proceed to Verification &rarr;
-        </a>
+approveBtn.addEventListener('click', async () => {
+
+    approveBtn.disabled = true;
+    rejectBtn.disabled = true;
+
+    approveBtn.innerHTML = `
+        {{ m.icon('loader', 16) }}
+        Applying...
     `;
+
+    try {
+
+        const templateName =
+            "{{ finding.recommended_template }}";
+
+        const response = await fetch(
+            "/api/remediation/apply",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    template: templateName
+                })
+            }
+        );
+
+        const result = await response.json();
+
+        console.log(
+            "Remediation result:",
+            result
+        );
+
+
+        if (result.status !== "APPLIED") {
+
+            throw new Error(
+                result.reason ||
+                result.message ||
+                "Patch application failed."
+            );
+
+        }
+
+
+        /*
+         * Actual backend patch succeeded.
+         */
+
+        diffPill.innerHTML =
+            `{{ m.status_pill('Patch Applied', 'success') }}`;
+
+
+        actionButtons.innerHTML = `
+            <a href="/verification"
+               class="btn btn-primary">
+                {{ m.icon('shield', 16) }}
+                Proceed to Verification →
+            </a>
+        `;
+
+
+        outcomeNotice.style.display = "block";
+
+        outcomeNotice.style.backgroundColor =
+            "var(--success-soft)";
+
+        outcomeNotice.style.color =
+            "var(--success)";
+
+
+        outcomeNotice.innerHTML = `
+            <div style="
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                gap:12px;
+            ">
+
+                <div style="
+                    display:flex;
+                    align-items:center;
+                    gap:10px;
+                    font-weight:500;
+                    font-size:14px;
+                ">
+
+                    {{ m.icon('check', 18) }}
+
+                    <span>
+                        <strong>Patch Approved &amp; Applied</strong>
+                        — Target file updated with the approved
+                        remediation template.
+                    </span>
+
+                </div>
+
+                <a href="/verification"
+                   class="btn btn-primary"
+                   style="
+                       height:36px;
+                       padding:0 14px;
+                       font-size:13px;
+                   ">
+                    Verify Now
+                </a>
+
+            </div>
+        `;
+
+
+    } catch (error) {
+
+        console.error(
+            "Remediation error:",
+            error
+        );
+
+
+        approveBtn.disabled = false;
+        rejectBtn.disabled = false;
+
+        approveBtn.innerHTML = `
+            {{ m.icon('sparkles', 16) }}
+            Approve &amp; Apply
+        `;
+
+
+        diffPill.innerHTML =
+            `{{ m.status_pill('Apply Failed', 'danger') }}`;
+
+
+        outcomeNotice.style.display = "block";
+
+        outcomeNotice.style.backgroundColor =
+            "var(--danger-soft)";
+
+        outcomeNotice.style.color =
+            "var(--danger)";
+
+
+        outcomeNotice.innerHTML = `
+            <div style="
+                display:flex;
+                align-items:center;
+                gap:10px;
+                font-weight:500;
+                font-size:14px;
+            ">
+
+                {{ m.icon('alert', 18) }}
+
+                <span>
+                    <strong>Patch Not Applied</strong>
+                    —
+                    ${error.message}
+                </span>
+
+            </div>
+        `;
+
+    }
+
+});
     outcomeNotice.style.display = 'block';
     outcomeNotice.style.backgroundColor = 'var(--success-soft)';
     outcomeNotice.style.color = 'var(--success)';

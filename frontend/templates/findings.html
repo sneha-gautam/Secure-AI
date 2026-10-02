@@ -1,69 +1,505 @@
 {% extends "base.html" %}
+
 {% import 'macros.html' as m %}
+
 {% block title %}Findings — SecureAI{% endblock %}
+
 {% block content %}
 
-{% call m.page_header("Vulnerability inventory", "Security Findings", "All vulnerabilities identified by the automated scanner and independently validated.") %}
-    <a href="/scan" class="btn btn-ghost">{{ m.icon('scan') }}New Scan</a>
+{% call m.page_header(
+    "Vulnerability inventory",
+    "Security Findings",
+    "Findings identified by the automated scanner and second-pass validated."
+) %}
+    <a href="/scan" class="btn btn-ghost">
+        {{ m.icon('scan') }}
+        New Scan
+    </a>
 {% endcall %}
 
+
 <div class="grid-3">
+
+    <!-- Total Findings -->
     <div class="panel">
         <div class="stat-row">
             <div>
                 <div class="stat-label">Total Findings</div>
-                <div class="stat-value font-display">{{ findings|length }}</div>
+                <div
+                    id="total-findings"
+                    class="stat-value font-display"
+                >
+                    0
+                </div>
             </div>
-            <div class="icon-box danger">{{ m.icon('alert', 18) }}</div>
+
+            <div class="icon-box danger">
+                {{ m.icon('alert', 18) }}
+            </div>
         </div>
-        <div class="stat-note"><b>3 confirmed</b> vulnerabilities</div>
+
+        <div class="stat-note">
+            <b id="actionable-count">0 actionable</b>
+            vulnerabilities
+        </div>
     </div>
+
+
+    <!-- Severity -->
     <div class="panel">
         <div class="stat-row">
             <div>
                 <div class="stat-label">Severity Breakdown</div>
-                <div class="stat-value small font-display" style="margin-top: 22px;">1 High <span style="font-size: 14px; color: var(--muted-foreground); font-weight: 400;">/ 2 Medium</span></div>
+
+                <div
+                    id="severity-breakdown"
+                    class="stat-value small font-display"
+                    style="margin-top:22px;"
+                >
+                    0 High / 0 Medium
+                </div>
             </div>
-            <div class="icon-box danger">{{ m.icon('shield', 18) }}</div>
+
+            <div class="icon-box danger">
+                {{ m.icon('shield', 18) }}
+            </div>
         </div>
-        <div class="stat-note"><b>1 high risk</b> requires immediate fix</div>
+
+        <div
+            id="severity-note"
+            class="stat-note"
+        >
+            No active vulnerabilities
+        </div>
     </div>
+
+
+    <!-- Validation -->
     <div class="panel">
         <div class="stat-row">
             <div>
                 <div class="stat-label">Validation Status</div>
-                <div class="stat-value small font-display" style="margin-top: 22px;">100% Validated</div>
+
+                <div
+                    id="validation-status"
+                    class="stat-value small font-display"
+                    style="margin-top:22px;"
+                >
+                    —
+                </div>
             </div>
-            <div class="icon-box success">{{ m.icon('check', 18) }}</div>
+
+            <div class="icon-box success">
+                {{ m.icon('check', 18) }}
+            </div>
         </div>
-        <div class="stat-note">0 false positives detected</div>
+
+        <div
+            id="validation-note"
+            class="stat-note"
+        >
+            Waiting for scan results
+        </div>
     </div>
+
 </div>
 
+
+<!-- Findings list -->
+
 <div class="panel no-pad">
+
     <div class="panel-head">
+
         <div>
             <h2>All Detected Findings</h2>
-            <p>Click on any finding to inspect AI security analysis and proposed remediation diff</p>
+
+            <p>
+                Click on any finding to inspect AI security analysis
+                and proposed remediation diff
+            </p>
         </div>
-        <span class="pill pill-danger">3 Actionable</span>
+
+        <span
+            id="actionable-pill"
+            class="pillpill-danger"
+        >
+            0 Actionable
+        </span>
+
     </div>
-    {% for f in findings %}
-    <a href="/remediation?finding={{ f.name }}" class="finding-row">
-        <div class="finding-name">
-            <span class="finding-icon">{{ m.icon('shield', 16) }}</span>
-            <div>
-                <div>{{ f.name }}</div>
-                {% if f.description %}
-                <div style="font-size: 12px; color: var(--muted-foreground); font-weight: 400; margin-top: 2px;">{{ f.description }}</div>
-                {% endif %}
+
+
+    <div id="findings-container">
+
+        <div
+            id="empty-state"
+            style="padding:32px; text-align:center;"
+        >
+            <div style="font-size:15px; font-weight:600;">
+                No scan results available
             </div>
+
+            <div
+                style="
+                    font-size:13px;
+                    color:var(--muted-foreground);
+                    margin-top:6px;
+                "
+            >
+                Start a scan to populate the findings list.
+            </div>
+
         </div>
-        <div class="finding-path">{{ f.path }}</div>
-        {{ m.status_pill(f.level, f.tone) }}
-        {{ m.icon('arrow-right', 16) }}
-    </a>
-    {% endfor %}
+
+    </div>
+
 </div>
+
+
+<script>
+
+const storedResults =
+    sessionStorage.getItem('scanResults');
+
+
+/*
+ * Severity mapping is based on SecureAI's
+ * configured MVP vulnerability classes.
+ */
+const severityMap = {
+
+    "SQL Injection": "HIGH",
+
+    "XSS": "MEDIUM",
+
+    "Cross-Site Scripting": "MEDIUM",
+
+    "Missing Security Headers": "MEDIUM"
+
+};
+
+
+function getFindingName(finding) {
+
+    if (finding.vulnerability_class === "XSS") {
+        return "Cross-Site Scripting";
+    }
+
+    return finding.vulnerability_class;
+
+}
+
+
+function getSeverity(finding) {
+
+    const name = getFindingName(finding);
+
+    return severityMap[name] || "MEDIUM";
+
+}
+
+
+function getSeverityTone(severity) {
+
+    if (severity === "HIGH") {
+        return "danger";
+    }
+
+    return "warning";
+
+}
+
+
+function escapeHtml(value) {
+
+    const div = document.createElement('div');
+
+    div.textContent = value || '';
+
+    return div.innerHTML;
+
+}
+
+
+function renderFindings(results) {
+
+    const container =
+        document.getElementById('findings-container');
+
+    const totalElement =
+        document.getElementById('total-findings');
+
+    const actionableElement =
+        document.getElementById('actionable-count');
+
+    const severityElement =
+        document.getElementById('severity-breakdown');
+
+    const severityNote =
+        document.getElementById('severity-note');
+
+    const validationElement =
+        document.getElementById('validation-status');
+
+    const validationNote =
+        document.getElementById('validation-note');
+
+    const actionablePill =
+        document.getElementById('actionable-pill');
+
+
+    /*
+     * Only show findings that are actually vulnerable.
+     */
+    const vulnerableFindings =
+        results.filter(
+            finding =>
+                finding.first_pass_vulnerable === true
+        );
+
+
+    /*
+     * Total findings
+     */
+    totalElement.textContent =
+        vulnerableFindings.length;
+
+    actionableElement.textContent =
+        vulnerableFindings.length + " actionable";
+
+    actionablePill.textContent =
+        vulnerableFindings.length + " Actionable";
+
+
+    /*
+     * Severity calculation
+     */
+    let highCount = 0;
+    let mediumCount = 0;
+
+    vulnerableFindings.forEach(finding => {
+
+        const severity =
+            getSeverity(finding);
+
+        if (severity === "HIGH") {
+            highCount++;
+        }
+
+        if (severity === "MEDIUM") {
+            mediumCount++;
+        }
+
+    });
+
+
+    severityElement.innerHTML =
+        `${highCount} High <span style="
+            font-size:14px;
+            color:var(--muted-foreground);
+            font-weight:400;
+        ">/ ${mediumCount} Medium</span>`;
+
+
+    if (highCount > 0) {
+
+        severityNote.innerHTML =
+            `<b>${highCount} high risk</b> requires attention`;
+
+    } else {
+
+        severityNote.textContent =
+            "No high-severity vulnerabilities detected";
+
+    }
+
+
+    /*
+     * Validation calculation
+     */
+    const validatedCount =
+        results.filter(
+            finding =>
+                finding.validated === true
+        ).length;
+
+
+    if (results.length > 0) {
+
+        const validationPercentage =
+            Math.round(
+                (validatedCount / results.length) * 100
+            );
+
+        validationElement.textContent =
+            validationPercentage + "% Validated";
+
+        validationNote.textContent =
+            `${validatedCount} of ${results.length} checks passed validation`;
+
+    }
+
+
+    /*
+     * No vulnerabilities
+     */
+    if (vulnerableFindings.length === 0) {
+
+        container.innerHTML = `
+
+            <div style="
+                padding:40px;
+                text-align:center;
+            ">
+
+                <div style="
+                    font-size:16px;
+                    font-weight:600;
+                ">
+                    No active vulnerabilities found
+                </div>
+
+                <div style="
+                    font-size:13px;
+                    color:var(--muted-foreground);
+                    margin-top:8px;
+                ">
+                    All configured security checks passed
+                    the current scan and validation.
+                </div>
+
+                <div style="
+                    margin-top:18px;
+                ">
+                    ${`{{ m.icon('check', 20) }}`}
+                </div>
+
+            </div>
+
+        `;
+
+        return;
+    }
+
+
+    /*
+     * Render actual findings
+     */
+    container.innerHTML =
+        vulnerableFindings.map(finding => {
+
+            const name =
+                getFindingName(finding);
+
+            const severity =
+                getSeverity(finding);
+
+            const tone =
+                getSeverityTone(severity);
+
+            const endpoint =
+                finding.endpoint || "/";
+
+            const parameter =
+                finding.original_finding &&
+                finding.original_finding.parameter
+                    ? finding.original_finding.parameter
+                    : "";
+
+
+            return `
+
+                <a
+                    href="/remediation?finding=${encodeURIComponent(name)}"
+                    class="finding-row"
+                >
+
+                    <div class="finding-name">
+
+                        <span class="finding-icon">
+                            {{ m.icon('shield', 16) }}
+                        </span>
+
+                        <div>
+
+                            <div>
+                                ${escapeHtml(name)}
+                            </div>
+
+                            <div style="
+                                font-size:12px;
+                                color:var(--muted-foreground);
+                                font-weight:400;
+                                margin-top:2px;
+                            ">
+                                ${escapeHtml(
+                                    parameter
+                                        ? "Parameter: " + parameter
+                                        : "Security issue detected by scanner"
+                                )}
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="finding-path">
+                        ${escapeHtml(endpoint)}
+                    </div>
+
+
+                    <span class="status-pill ${tone}">
+                        ${escapeHtml(severity)}
+                    </span>
+
+
+                    {{ m.icon('arrow-right', 16) }}
+
+                </a>
+
+            `;
+
+        }).join('');
+
+}
+
+
+/*
+ * Read the real scan results.
+ */
+if (storedResults) {
+
+    try {
+
+        const results =
+            JSON.parse(storedResults);
+
+        console.log(
+            "SecureAI real scan results:",
+            results
+        );
+
+        renderFindings(results);
+
+    } catch (error) {
+
+        console.error(
+            "Could not read scan results:",
+            error
+        );
+
+    }
+
+} else {
+
+    console.log(
+        "No scan results found in sessionStorage."
+    );
+
+}
+
+</script>
 
 {% endblock %}

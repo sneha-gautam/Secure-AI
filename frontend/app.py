@@ -1,4 +1,16 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
+import os
+import sys
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCANNER_DIR = os.path.join(PROJECT_ROOT, "backend", "scanner")
+
+if SCANNER_DIR not in sys.path:
+    sys.path.insert(0, SCANNER_DIR)
+
+from scanner import run_scan
+from validator import validate_all
+from remediation import apply_patch
 
 app = Flask(__name__)
  
@@ -53,10 +65,15 @@ REMEDIATION_DATA = {
 -            "SELECT username, comment FROM comments WHERE comment LIKE ?",
 -            (f"%{query}%",)
 -        ).fetchall()
-+    results = conn.execute(
-+        "SELECT username, comment FROM comments WHERE comment LIKE ?",
-+        (f"%{query}%",)
-+    ).fetchall()""",
++    if VULN_SQLI_ENABLED:
+    sql = f"SELECT username, comment FROM comments WHERE comment LIKE '%{query}%'"
+    results = conn.execute(sql).fetchall()
+else:
+    results = conn.execute(
+        "SELECT username, comment FROM comments WHERE comment LIKE ?",
+        (f"%{query}%",)
+    ).fetchall()
+            """,
     },
     "Cross-Site Scripting": {
         "name": "Cross-Site Scripting",
@@ -111,8 +128,49 @@ REMEDIATION_DATA = {
      return response""",
     },
 }
+@app.route("/api/scan", methods=["POST"])
+def api_scan():
+    try:
+        findings = run_scan()
+        validated = validate_all(findings)
 
+        return jsonify({
+            "status": "completed",
+            "findings": validated
+        })
 
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+@app.route("/api/remediation/apply", methods=["POST"])
+def api_apply_remediation():
+    try:
+        data = request.get_json() or {}
+        template_name = data.get("template")
+
+        allowed_templates = {
+            "parameterized_query",
+            "output_encoding",
+            "add_security_header",
+        }
+
+        if template_name not in allowed_templates:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid remediation template."
+            }), 400
+
+        result = apply_patch(template_name)
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 @app.route("/")
 def dashboard():
     return render_template("dashboard.html", active="dashboard", findings=findings)
