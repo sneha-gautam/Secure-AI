@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, jsonify, Response
+from datetime import datetime
+import time
 import os
 import sys
 
@@ -23,6 +25,8 @@ CURRENT_SCAN = {
     "target": None,
     "findings": [],
     "security_model": None,
+    "scanned_at": None,
+    "duration_seconds": None,
 }
  
 findings = [
@@ -139,11 +143,33 @@ else:
      return response""",
     },
 }
+def calculate_security_score(scan_findings):
+    score = 100
+
+    penalties = {
+        "SQL Injection": 20,
+        "XSS": 10,
+        "Cross-Site Scripting": 10,
+        "Missing Security Headers": 10,
+    }
+
+    for finding in scan_findings:
+        if (
+            finding.get("first_pass_vulnerable") is True
+            and finding.get("validated") is True
+        ):
+            score -= penalties.get(
+                finding.get("vulnerability_class"),
+                5
+            )
+
+    return max(0, min(100, score))
+
+
 @app.route("/api/scan", methods=["POST"])
 def api_scan():
     try:
         data = request.get_json() or {}
-
         target_url = data.get("target_url", "").strip()
 
         if not target_url:
@@ -152,21 +178,34 @@ def api_scan():
                 "message": "Target URL is required."
             }), 400
 
+        started = time.perf_counter()
+
         scan_result = run_scan(target_url)
 
         validated = validate_all(
             scan_result["findings"],
             scan_result["target"],
         )
+
+        duration = round(
+            time.perf_counter() - started,
+            1
+        )
+
         CURRENT_SCAN["target"] = scan_result["target"]
         CURRENT_SCAN["findings"] = validated
         CURRENT_SCAN["security_model"] = scan_result["security_model"]
+        CURRENT_SCAN["scanned_at"] = datetime.now().astimezone()
+        CURRENT_SCAN["duration_seconds"] = duration
 
         return jsonify({
             "status": "completed",
             "target": scan_result["target"],
             "security_model": scan_result["security_model"],
             "findings": validated,
+            "scanned_at": CURRENT_SCAN["scanned_at"].isoformat(),
+            "duration_seconds": duration,
+            "security_score": calculate_security_score(validated),
         })
 
     except Exception as e:
@@ -174,6 +213,8 @@ def api_scan():
             "status": "error",
             "message": str(e)
         }), 500
+
+
 @app.route("/api/remediation/apply", methods=["POST"])
 def api_apply_remediation():
     try:
@@ -203,7 +244,95 @@ def api_apply_remediation():
         }), 500
 @app.route("/")
 def dashboard():
-    return render_template("dashboard.html", active="dashboard", findings=findings)
+
+    open_findings = [
+        f for f in CURRENT_SCAN["findings"]
+        if f.get("first_pass_vulnerable") is True
+        and f.get("validated") is True
+    ]
+
+    severity_map = {
+        "SQL Injection": ("High", "danger"),
+        "XSS": ("Medium", "warning"),
+        "Cross-Site Scripting": ("Medium", "warning"),
+        "Missing Security Headers": ("Medium", "warning"),
+    }
+
+    dashboard_findings = []
+
+    for finding in open_findings:
+        name = finding.get(
+            "vulnerability_class",
+            "Unknown"
+        )
+
+        level, tone = severity_map.get(
+            name,
+            ("Medium", "warning")
+        )
+
+        dashboard_findings.append({
+            "name": (
+                "Cross-Site Scripting"
+                if name == "XSS"
+                else name
+            ),
+            "level": level,
+            "tone": tone,
+            "path": finding.get(
+                "endpoint",
+                "/"
+            ),
+        })
+
+    score = calculate_security_score(
+        CURRENT_SCAN["findings"]
+    )
+
+    high_count = sum(
+        1
+        for finding in dashboard_findings
+        if finding["level"] == "High"
+    )
+
+    target = CURRENT_SCAN.get("target")
+    is_demo = (
+        is_demo_target(target)
+        if target
+        else False
+    )
+
+    remediation_total = (
+        3
+        if is_demo
+        else 0
+    )
+
+    remediation_fixed = (
+        max(
+            0,
+            remediation_total - len(open_findings)
+        )
+        if remediation_total
+        else 0
+    )
+
+    return render_template(
+        "dashboard.html",
+        active="dashboard",
+        findings=dashboard_findings,
+        target=target,
+        score=score,
+        high_count=high_count,
+        scanned_at=CURRENT_SCAN.get(
+            "scanned_at"
+        ),
+        scan_duration=CURRENT_SCAN.get(
+            "duration_seconds"
+        ),
+        remediation_fixed=remediation_fixed,
+        remediation_total=remediation_total,
+    )
 
 
 @app.route("/scan")

@@ -3,57 +3,229 @@
 {% block title %}Dashboard — SecureAI{% endblock %}
 {% block content %}
 
-{% call m.page_header("Security overview", "SecureAI Dashboard", "Live security posture for demo.secureai.app — scan results, open findings, and remediation status at a glance.") %}
-    <a href="/scan" class="btn btn-primary">{{ m.icon('scan') }}Start Scan</a>
+{% call m.page_header(
+    "Security overview",
+    "SecureAI Dashboard",
+    "Current security posture from the latest scan."
+) %}
+    <a href="/scan" class="btn btn-primary">
+        {{ m.icon('scan') }}Start Scan
+    </a>
 {% endcall %}
 
 <div class="grid-3">
+
     <div class="panel accent-edge">
         <div class="stat-label">Security Score</div>
-        <div class="stat-value font-display">72<span class="stat-of">/ 100</span></div>
-        <div class="progress-track"><div class="progress-fill" style="width: 72%"></div></div>
-    </div>
-    <div class="panel">
-        <div class="stat-row">
-            <div>
-                <div class="stat-label">Open Findings</div>
-                <div class="stat-value font-display">3</div>
-            </div>
-            <div class="icon-box danger">{{ m.icon('alert', 18) }}</div>
+
+        <div class="stat-value font-display">
+            {{ score }}
+            <span class="stat-of">/ 100</span>
         </div>
-        <div class="stat-note"><b>1 high risk</b> needs attention</div>
-    </div>
-    <div class="panel">
-        <div class="stat-row">
-            <div>
-                <div class="stat-label">Last Scan</div>
-                <div class="stat-value small font-display">Today, 09:42</div>
-            </div>
-            <div class="icon-box success">{{ m.icon('calendar-clock', 18) }}</div>
+
+        <div class="progress-track">
+            <div
+                class="progress-fill"
+                style="width: {{ score }}%"
+            ></div>
         </div>
-        <div class="stat-note">Completed in 38 seconds</div>
+
+        <div class="stat-note">
+            Based on validated open findings
+        </div>
     </div>
+
+
+    <div class="panel">
+
+        <div class="stat-row">
+
+            <div>
+                <div class="stat-label">
+                    Open Findings
+                </div>
+
+                <div class="stat-value font-display">
+                    {{ findings|length }}
+                </div>
+            </div>
+
+            <div class="icon-box {{ 'danger' if findings else 'success' }}">
+                {{ m.icon('alert', 18) }}
+            </div>
+
+        </div>
+
+        <div class="stat-note">
+
+            {% if findings %}
+                <b>{{ high_count }} high risk</b>
+                needs attention
+            {% else %}
+                No open findings
+            {% endif %}
+
+        </div>
+
+    </div>
+
+
+    <div class="panel">
+
+        <div class="stat-row">
+
+            <div>
+                <div class="stat-label">
+                    Last Scan
+                </div>
+
+                <div class="stat-value small font-display">
+
+                    {% if scanned_at %}
+                        {{ scanned_at.strftime(
+                            '%d %b %Y, %I:%M %p'
+                        ) }}
+                    {% else %}
+                        Not scanned yet
+                    {% endif %}
+
+                </div>
+            </div>
+
+            <div class="icon-box success">
+                {{ m.icon('calendar-clock', 18) }}
+            </div>
+
+        </div>
+
+        <div class="stat-note">
+
+            {% if scan_duration is not none %}
+                Completed in {{ scan_duration }} seconds
+            {% else %}
+                Run a scan to update this
+            {% endif %}
+
+        </div>
+
+    </div>
+
 </div>
 
+
+<div class="grid-3">
+
+    <div class="panel" style="grid-column: span 2;">
+
+        <div class="stat-label">
+            Target
+        </div>
+
+        <div style="
+            margin-top: 10px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 18px;
+        ">
+            {{ target if target else 'No scan target yet' }}
+        </div>
+
+    </div>
+
+
+    <div class="panel">
+
+        <div class="stat-label">
+            Remediation
+        </div>
+
+        <div style="
+            margin-top: 10px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 18px;
+        ">
+
+            {% if remediation_total %}
+                {{ remediation_fixed }}
+                /
+                {{ remediation_total }}
+                fixed
+            {% else %}
+                Pending scan
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+
+
 <div class="panel no-pad">
+
     <div class="panel-head">
+
         <div>
             <h2>Recent Findings</h2>
-            <p>From the latest scan of demo.secureai.app</p>
+
+            <p>
+                {{ target if target else
+                   'No scan has been run yet.' }}
+            </p>
         </div>
-        <a href="/findings" class="btn btn-ghost">View all {{ m.icon('arrow-right', 14) }}</a>
+
+        <a href="/findings" class="btn btn-ghost">
+            View all
+            {{ m.icon('arrow-right', 14) }}
+        </a>
+
     </div>
-    {% for f in findings %}
-    <a href="/remediation?finding={{ f.name }}" class="finding-row">
-        <div class="finding-name">
-            <span class="finding-icon">{{ m.icon('shield', 16) }}</span>
-            {{ f.name }}
+
+
+    {% if findings %}
+
+        {% for f in findings %}
+
+        <a
+            href="/remediation?finding={{ f.name }}"
+            class="finding-row"
+        >
+
+            <div class="finding-name">
+
+                <span class="finding-icon">
+                    {{ m.icon('shield', 16) }}
+                </span>
+
+                {{ f.name }}
+
+            </div>
+
+            <div class="finding-path">
+                {{ f.path }}
+            </div>
+
+            {{ m.status_pill(
+                f.level,
+                f.tone
+            ) }}
+
+            {{ m.icon('arrow-right', 16) }}
+
+        </a>
+
+        {% endfor %}
+
+    {% else %}
+
+        <div style="
+            padding: 28px;
+            color: var(--muted-foreground);
+        ">
+            No open findings in the latest scan.
         </div>
-        <div class="finding-path">{{ f.path }}</div>
-        {{ m.status_pill(f.level, f.tone) }}
-        {{ m.icon('arrow-right', 16) }}
-    </a>
-    {% endfor %}
+
+    {% endif %}
+
 </div>
 
 {% endblock %}
