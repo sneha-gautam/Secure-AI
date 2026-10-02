@@ -1,0 +1,493 @@
+from flask import Flask, render_template, request, jsonify
+import os
+import sys
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCANNER_DIR = os.path.join(PROJECT_ROOT, "backend", "scanner")
+
+if SCANNER_DIR not in sys.path:
+    sys.path.insert(0, SCANNER_DIR)
+
+from scanner import run_scan
+from validator import validate_all
+from remediation import apply_patch
+from scanner import (
+    check_demo_sqli,
+    check_demo_xss,
+    check_security_headers,
+)
+from functionality import run_functionality_tests
+
+app = Flask(__name__)
+CURRENT_SCAN = {
+    "target": None,
+    "findings": [],
+    "security_model": None,
+}
+ 
+findings = [
+    {
+        "name": "SQL Injection",
+        "level": "High",
+        "path": "/search",
+        "tone": "danger",
+        "description":"Unsanitized user input in query parameter executed directly in SQL query.",
+    },
+    {
+        "name": "Cross-Site Scripting",
+        "level": "Medium",
+        "path": "/comments",
+        "tone": "warning",
+        "description": "User comments rendered with '| safe' filter without HTML entity encoding.",
+    },
+    {
+        "name": "Missing Security Headers",
+        "level": "Medium",
+        "path": "/",
+        "tone": "warning",
+        "description": "Response missing X-Content-Type-Options, X-Frame-Options, and CSP.",
+    },
+]
+
+REMEDIATION_DATA = {
+    "SQL Injection": {
+        "name": "SQL Injection",
+        "endpoint": "/search",
+        "parameter": "query",
+        "severity": "HIGH",
+        "tone": "danger",
+        "risk_of_change": "LOW",
+        "risk_tone": "success",
+        "file": "backend/demo_app/app.py",
+        "recommended_template": "parameterized_query",
+        "template_title": "Parameterized Query (Prepared Statements)",
+        "explanation": "The endpoint dynamically interpolates unsanitized user input from the 'query' parameter directly into the SQL statement string. An attacker supplying SQL metacharacters (e.g., ' OR '1'='1) can alter query logic, bypass validation, or access arbitrary records.",
+        "impact": "Full database read exposure, authentication bypass, data extraction, or alteration of table records depending on SQLite backend user privileges.",
+        "severity_justification": "Direct SQL injection on a public search endpoint leading to unauthorized database information retrieval.",
+        "diff": """--- app.py (before)
++++ app.py (after)
+@@ -188,14 +188,9 @@
+-    if VULN_SQLI_ENABLED:
+-        # INTENTIONALLY VULNERABLE — controlled test state only, toggled via env var
+-        sql = f"SELECT username, comment FROM comments WHERE comment LIKE '%{query}%'"
+-        results = conn.execute(sql).fetchall()
+-    else:
+-        results = conn.execute(
+-            "SELECT username, comment FROM comments WHERE comment LIKE ?",
+-            (f"%{query}%",)
+-        ).fetchall()
++    if VULN_SQLI_ENABLED:
+    sql = f"SELECT username, comment FROM comments WHERE comment LIKE '%{query}%'"
+    results = conn.execute(sql).fetchall()
+else:
+    results = conn.execute(
+        "SELECT username, comment FROM comments WHERE comment LIKE ?",
+        (f"%{query}%",)
+    ).fetchall()
+            """,
+    },
+    "Cross-Site Scripting": {
+        "name": "Cross-Site Scripting",
+        "endpoint": "/comments",
+        "parameter": "comment",
+        "severity": "MEDIUM",
+        "tone": "warning",
+        "risk_of_change": "LOW",
+        "risk_tone": "success",
+        "file": "backend/demo_app/templates/comments.html",
+        "recommended_template": "output_encoding",
+        "template_title": "Context-Aware HTML Entity Output Encoding",
+        "explanation": "The Jinja2 template explicitly disables auto-escaping on user-supplied comments via the '| safe' filter. This allows stored HTML/JavaScript payloads to execute in victim client browsers when browsing the comments feed.",
+        "impact": "Session cookie theft, client-side credential harvesting, DOM manipulation, or actions performed on behalf of authenticated users.",
+        "severity_justification": "Stored cross-site scripting vulnerability in user-accessible comment board.",
+        "diff": """--- templates/comments.html (before)
++++ templates/comments.html (after)
+@@ -41,7 +41,3 @@
+-                {% if vuln_xss_enabled %}
+-                    {{ comment["comment"] | safe }}
+-                {% else %}
+-                    {{ comment["comment"] }}
+-                {% endif %}
++                {{ comment["comment"] }}""",
+    },
+    "Missing Security Headers": {
+        "name": "Missing Security Headers",
+        "endpoint": "/",
+        "parameter": "HTTP Response Headers",
+        "severity": "MEDIUM",
+        "tone": "warning",
+        "risk_of_change": "LOW",
+        "risk_tone": "success",
+        "file": "backend/demo_app/app.py",
+        "recommended_template": "add_security_header",
+        "template_title": "HTTP Security Response Headers",
+        "explanation": "HTTP responses do not include essential browser hardening headers: X-Content-Type-Options (nosniff), X-Frame-Options (DENY), and Content-Security-Policy (default-src 'self').",
+        "impact": "Increased exposure to clickjacking, MIME-type sniffing attacks, and cross-site scripting attacks.",
+        "severity_justification": "Absence of baseline web application defense-in-depth headers recommended by OWASP.",
+        "diff": """--- app.py (before)
++++ app.py (after)
+@@ -26,8 +26,5 @@
+  @app.after_request
+  def set_security_headers(response):
+-    if SECURITY_HEADERS_ENABLED:
+-        response.headers["X-Content-Type-Options"] = "nosniff"
+-        response.headers["X-Frame-Options"] = "DENY"
+-        response.headers["Content-Security-Policy"] = "default-src 'self'"
++    response.headers["X-Content-Type-Options"] = "nosniff"
++    response.headers["X-Frame-Options"] = "DENY"
++    response.headers["Content-Security-Policy"] = "default-src 'self'"
+     return response""",
+    },
+}
+@app.route("/api/scan", methods=["POST"])
+def api_scan():
+    try:
+        data = request.get_json() or {}
+
+        target_url = data.get("target_url", "").strip()
+
+        if not target_url:
+            return jsonify({
+                "status": "error",
+                "message": "Target URL is required."
+            }), 400
+
+        scan_result = run_scan(target_url)
+
+        validated = validate_all(
+            scan_result["findings"],
+            scan_result["target"],
+        )
+        CURRENT_SCAN["target"] = scan_result["target"]
+        CURRENT_SCAN["findings"] = validated
+        CURRENT_SCAN["security_model"] = scan_result["security_model"]
+
+        return jsonify({
+            "status": "completed",
+            "target": scan_result["target"],
+            "security_model": scan_result["security_model"],
+            "findings": validated,
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+@app.route("/api/remediation/apply", methods=["POST"])
+def api_apply_remediation():
+    try:
+        data = request.get_json() or {}
+        template_name = data.get("template")
+
+        allowed_templates = {
+            "parameterized_query",
+            "output_encoding",
+            "add_security_header",
+        }
+
+        if template_name not in allowed_templates:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid remediation template."
+            }), 400
+
+        result = apply_patch(template_name)
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+@app.route("/")
+def dashboard():
+    return render_template("dashboard.html", active="dashboard", findings=findings)
+
+
+@app.route("/scan")
+def scan():
+    return render_template("scan.html", active="scan")
+
+
+@app.route("/findings")
+def findings_page():
+    current_findings = [
+        f for f in CURRENT_SCAN["findings"]
+        if f.get("first_pass_vulnerable") is True
+        and f.get("validated") is True
+    ]
+
+    return render_template(
+        "findings.html",
+        active="findings",
+        findings=current_findings,
+        target=CURRENT_SCAN["target"],
+    )
+
+
+@app.route("/remediation")
+def remediation_page():
+
+    current_findings = [
+        f for f in CURRENT_SCAN["findings"]
+        if f.get("first_pass_vulnerable") is True
+        and f.get("validated") is True
+    ]
+    print("DEBUG CURRENT_SCAN FINDINGS:", CURRENT_SCAN["findings"])
+
+    remediation_findings = []
+
+    for f in current_findings:
+
+        vuln_name = f["vulnerability_class"]
+
+        remediation_key = {
+            "XSS": "Cross-Site Scripting",
+            "Cross-Site Scripting": "Cross-Site Scripting",
+            "SQLi": "SQL Injection",
+            "SQL Injection": "SQL Injection",
+            "Missing Security Headers": "Missing Security Headers",
+        }.get(vuln_name)
+
+        if remediation_key:
+            remediation_findings.append(
+                REMEDIATION_DATA[remediation_key]
+            )
+
+    finding_query = request.args.get("finding", "").strip()
+
+    selected_finding = None
+
+    for data in remediation_findings:
+
+        if finding_query.lower() == data["name"].lower():
+            selected_finding = data
+            break
+
+    if selected_finding is None and remediation_findings:
+        selected_finding = remediation_findings[0]
+
+    return render_template(
+        "remediation.html",
+        active="remediation",
+        finding=selected_finding,
+        all_findings=remediation_findings,
+        target=CURRENT_SCAN["target"],
+    )
+VERIFICATION_CASES = {
+    "VERIFIED": {
+        "verdict": "VERIFIED",
+        "stats": {
+            "sec_passed": 3,
+            "sec_total": 3,
+            "func_passed": 3,
+            "func_total": 3,
+            "regressions": 0,
+        },
+        "rows": [
+            {
+                "name": "SQL Injection",
+                "endpoint": "/search?query=...",
+                "before_note": "Bypass count > control, 500 on malformed input",
+                "sec_fixed": True,
+                "after_note": "Prepared statement bound safely, 0 syntax error",
+                "func_passed": True,
+                "func_test_name": "test_search",
+                "verdict": "VERIFIED",
+            },
+            {
+                "name": "Cross-Site Scripting (XSS)",
+                "endpoint": "/comments",
+                "before_note": "Raw <script> executed via | safe filter",
+                "sec_fixed": True,
+                "after_note": "Output safely encoded via Jinja2 autoescaping",
+                "func_passed": True,
+                "func_test_name": "test_comments",
+                "verdict": "VERIFIED",
+            },
+            {
+                "name": "Missing Security Headers",
+                "endpoint": "/",
+                "before_note": "Missing nosniff, DENY, and CSP headers",
+                "sec_fixed": True,
+                "after_note": "X-Content-Type, X-Frame, and CSP present",
+                "func_passed": True,
+                "func_test_name": "test_login",
+                "verdict": "VERIFIED",
+            },
+        ],
+    },
+    "REGRESSION": {
+        "verdict": "REGRESSION",
+        "stats": {
+            "sec_passed": 3,
+            "sec_total": 3,
+            "func_passed": 2,
+            "func_total": 3,
+            "regressions": 1,
+        },
+        "rows": [
+            {
+                "name": "SQL Injection",
+                "endpoint": "/search?query=...",
+                "before_note": "Bypass count > control, 500 on malformed input",
+                "sec_fixed": True,
+                "after_note": "Security fixed, but search returned empty results",
+                "func_passed": False,
+                "func_test_name": "test_search",
+                "verdict": "REGRESSION",
+            },
+            {
+                "name": "Cross-Site Scripting (XSS)",
+                "endpoint": "/comments",
+                "before_note": "Raw <script> executed via | safe filter",
+                "sec_fixed": True,
+                "after_note": "Output safely encoded via Jinja2 autoescaping",
+                "func_passed": True,
+                "func_test_name": "test_comments",
+                "verdict": "VERIFIED",
+            },
+            {
+                "name": "Missing Security Headers",
+                "endpoint": "/",
+                "before_note": "Missing nosniff, DENY, and CSP headers",
+                "sec_fixed": True,
+                "after_note": "X-Content-Type, X-Frame, and CSP present",
+                "func_passed": True,
+                "func_test_name": "test_login",
+                "verdict": "VERIFIED",
+            },
+        ],
+    },
+    "FAILED": {
+        "verdict": "FAILED",
+        "stats": {
+            "sec_passed": 2,
+            "sec_total": 3,
+            "func_passed": 3,
+            "func_total": 3,
+            "regressions": 0,
+        },
+        "rows": [
+            {
+                "name": "SQL Injection",
+                "endpoint": "/search?query=...",
+                "before_note": "Bypass count > control, 500 on malformed input",
+                "sec_fixed": False,
+                "after_note": "Error signal still detected on malformed input",
+                "func_passed": True,
+                "func_test_name": "test_search",
+                "verdict": "FAILED",
+            },
+            {
+                "name": "Cross-Site Scripting (XSS)",
+                "endpoint": "/comments",
+                "before_note": "Raw <script> executed via | safe filter",
+                "sec_fixed": True,
+                "after_note": "Output safely encoded via Jinja2 autoescaping",
+                "func_passed": True,
+                "func_test_name": "test_comments",
+                "verdict": "VERIFIED",
+            },
+            {
+                "name": "Missing Security Headers",
+                "endpoint": "/",
+                "before_note": "Missing nosniff, DENY, and CSP headers",
+                "sec_fixed": True,
+                "after_note": "X-Content-Type, X-Frame, and CSP present",
+                "func_passed": True,
+                "func_test_name": "test_login",
+                "verdict": "VERIFIED",
+            },
+        ],
+    },
+}
+
+
+@app.route("/verification")
+def verification_page():
+
+    if not CURRENT_SCAN["target"]:
+        return render_template(
+            "verification.html",
+            active="verification",
+            verdict="NOT SCANNED",
+            stats={
+                "sec_passed": 0,
+                "sec_total": 0,
+                "func_passed": 0,
+                "func_total": 0,
+                "regressions": 0,
+            },
+            rows=[],
+        )
+
+    target = CURRENT_SCAN["target"]
+
+    security_checks = [
+        ("SQL Injection", check_demo_sqli),
+        ("XSS", check_demo_xss),
+        ("Missing Security Headers", check_security_headers),
+    ]
+
+    rows = []
+    sec_passed = 0
+
+    for name, check_fn in security_checks:
+        evidence = check_fn(target)
+        security_fixed = not evidence.get("vulnerable", False)
+
+        if security_fixed:
+            sec_passed += 1
+
+        rows.append({
+            "name": name,
+            "endpoint": evidence.get("endpoint", "/"),
+            "before_note": "Detected during initial security scan",
+            "sec_fixed": security_fixed,
+            "after_note": (
+                "Security check passed"
+                if security_fixed
+                else "Vulnerability still detected"
+            ),
+            "func_passed": True,
+            "func_test_name": "Security verification",
+            "verdict": "VERIFIED" if security_fixed else "FAILED",
+        })
+
+    functionality_results = run_functionality_tests()
+    func_passed = sum(
+        1 for result in functionality_results
+        if result["passed"]
+    )
+    func_total = len(functionality_results)
+
+    all_security_fixed = sec_passed == len(security_checks)
+    all_functionality_passed = func_passed == func_total
+
+    if all_security_fixed and all_functionality_passed:
+        verdict = "VERIFIED"
+    elif all_security_fixed and not all_functionality_passed:
+        verdict = "REGRESSION"
+    else:
+        verdict = "FAILED"
+
+    stats = {
+        "sec_passed": sec_passed,
+        "sec_total": len(security_checks),
+        "func_passed": func_passed,
+        "func_total": func_total,
+        "regressions": func_total - func_passed,
+    }
+
+    return render_template(
+        "verification.html",
+        active="verification",
+        verdict=verdict,
+        stats=stats,
+        rows=rows,
+    )
+if __name__ == "__main__":
+    app.run(debug=True, port=5003)

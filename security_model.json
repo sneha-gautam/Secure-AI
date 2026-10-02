@@ -1,0 +1,110 @@
+{
+  "application": "SecureAI Demo Application",
+  "base_url": "http://127.0.0.1:5002/",
+  "routes": [
+    {
+      "path": "/",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/about",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/comments",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "inputs": [
+        "comment"
+      ]
+    },
+    {
+      "path": "/health",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/login",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "inputs": [
+        "username",
+        "password"
+      ]
+    },
+    {
+      "path": "/profile",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/search",
+      "methods": [
+        "GET"
+      ],
+      "inputs": [
+        "query"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "url": "http://127.0.0.1:5002/",
+      "path": "/"
+    },
+    {
+      "url": "http://127.0.0.1:5002/about",
+      "path": "/about"
+    },
+    {
+      "url": "http://127.0.0.1:5002/comments",
+      "path": "/comments"
+    },
+    {
+      "url": "http://127.0.0.1:5002/health",
+      "path": "/health"
+    },
+    {
+      "url": "http://127.0.0.1:5002/login",
+      "path": "/login"
+    },
+    {
+      "url": "http://127.0.0.1:5002/profile",
+      "path": "/profile"
+    },
+    {
+      "url": "http://127.0.0.1:5002/search",
+      "path": "/search"
+    }
+  ],
+  "parameters": [
+    {
+      "url": "http://127.0.0.1:5002/search",
+      "parameter": "query",
+      "method": "GET"
+    }
+  ],
+  "forms": [
+    {
+      "page": "http://127.0.0.1:5002/comments",
+      "action": "http://127.0.0.1:5002/comments",
+      "method": "POST",
+      "inputs": [
+        {
+          "name": "comment",
+          "type": "text"
+        }
+      ]
+    }
+  ]
+}

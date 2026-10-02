@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import os
 import sys
 
@@ -11,8 +11,19 @@ if SCANNER_DIR not in sys.path:
 from scanner import run_scan
 from validator import validate_all
 from remediation import apply_patch
+from scanner import (
+    check_demo_sqli,
+    check_demo_xss,
+    check_security_headers,
+)
+from functionality import run_functionality_tests
 
 app = Flask(__name__)
+CURRENT_SCAN = {
+    "target": None,
+    "findings": [],
+    "security_model": None,
+}
  
 findings = [
     {
@@ -131,12 +142,31 @@ else:
 @app.route("/api/scan", methods=["POST"])
 def api_scan():
     try:
-        findings = run_scan()
-        validated = validate_all(findings)
+        data = request.get_json() or {}
+
+        target_url = data.get("target_url", "").strip()
+
+        if not target_url:
+            return jsonify({
+                "status": "error",
+                "message": "Target URL is required."
+            }), 400
+
+        scan_result = run_scan(target_url)
+
+        validated = validate_all(
+            scan_result["findings"],
+            scan_result["target"],
+        )
+        CURRENT_SCAN["target"] = scan_result["target"]
+        CURRENT_SCAN["findings"] = validated
+        CURRENT_SCAN["security_model"] = scan_result["security_model"]
 
         return jsonify({
             "status": "completed",
-            "findings": validated
+            "target": scan_result["target"],
+            "security_model": scan_result["security_model"],
+            "findings": validated,
         })
 
     except Exception as e:
@@ -183,170 +213,850 @@ def scan():
 
 @app.route("/findings")
 def findings_page():
-    return render_template("findings.html", active="findings", findings=findings)
+    current_findings = [
+        f for f in CURRENT_SCAN["findings"]
+        if f.get("first_pass_vulnerable") is True
+        and f.get("validated") is True
+    ]
+    return render_template(
+        "findings.html",
+        active="findings",
+        findings=current_findings,
+        target=CURRENT_SCAN["target"],
+    )
 
 
 @app.route("/remediation")
 def remediation_page():
+
+    current_findings = [
+        f for f in CURRENT_SCAN["findings"]
+        if f.get("first_pass_vulnerable") is True
+        and f.get("validated") is True
+    ]
+    print("DEBUG CURRENT_SCAN FINDINGS:", CURRENT_SCAN["findings"])
+
+    remediation_findings = []
+
+    for f in current_findings:
+
+        vuln_name = f["vulnerability_class"]
+
+        remediation_key = {
+            "XSS": "Cross-Site Scripting",
+            "Cross-Site Scripting": "Cross-Site Scripting",
+            "SQLi": "SQL Injection",
+            "SQL Injection": "SQL Injection",
+            "Missing Security Headers": "Missing Security Headers",
+        }.get(vuln_name)
+
+        if remediation_key:
+            remediation_findings.append(
+                REMEDIATION_DATA[remediation_key]
+            )
+
     finding_query = request.args.get("finding", "").strip()
+
     selected_finding = None
-    for name, data in REMEDIATION_DATA.items():
-        if finding_query.lower() == name.lower() or finding_query.lower() in name.lower():
+
+    for data in remediation_findings:
+
+        if finding_query.lower() == data["name"].lower():
             selected_finding = data
             break
-    if not selected_finding:
-        selected_finding = REMEDIATION_DATA["SQL Injection"]
+
+    if selected_finding is None and remediation_findings:
+        selected_finding = remediation_findings[0]
 
     return render_template(
         "remediation.html",
         active="remediation",
         finding=selected_finding,
-        all_findings=findings,
+        all_findings=remediation_findings,
+        target=CURRENT_SCAN["target"],
     )
+def is_demo_target(target):
+  return target.startswith("http://127.0.0.1:5002")
+
+def build_report_data():
+    """
+    Build a report from the current live scan state.
+
+    Demo target:
+        Security verification + functionality verification
+
+    External target:
+        Security assessment + remediation guidance.
+        Source-level patching and functionality verification are unavailable.
+    """
+
+    target = CURRENT_SCAN.get("target")
+    findings = CURRENT_SCAN.get("findings", [])
+
+    if not target:
+        return {
+            "report_type": "No Scan",
+            "target": None,
+            "findings": [],
+            "verification": {
+                "status": "NOT SCANNED"
+            }
+        }
+
+    vulnerable_findings = [
+        f for f in findings
+        if f.get("first_pass_vulnerable") is True
+    ]
+
+    # =========================================================
+    # CONTROLLED DEMO REPORT
+    # =========================================================
+
+    if is_demo_target(target):
+
+        security_rows = []
+
+        for finding in vulnerable_findings:
+
+            vuln_name = finding["vulnerability_class"]
+
+            if vuln_name == "SQL Injection":
+                evidence = check_demo_sqli(target)
+
+            elif vuln_name == "XSS":
+                evidence = check_demo_xss(target)
+
+            elif vuln_name == "Missing Security Headers":
+                evidence = check_security_headers(target)
+
+            else:
+                continue
+
+            fixed = not evidence.get("vulnerable", False)
+
+            remediation_key = {
+                "XSS": "Cross-Site Scripting",
+                "SQLi": "SQL Injection",
+                "SQL Injection": "SQL Injection",
+                "Missing Security Headers": "Missing Security Headers",
+            }.get(vuln_name, vuln_name)
+
+            security_rows.append({
+                "name": vuln_name,
+                "endpoint": finding.get("endpoint", "/"),
+                "before": "Vulnerable",
+                "after": (
+                    "Security Fixed"
+                    if fixed
+                    else "Still Vulnerable"
+                ),
+                "security_fixed": fixed,
+                "remediation": REMEDIATION_DATA.get(
+                    remediation_key,
+                    {}
+                ).get(
+                    "template_title",
+                    "Controlled remediation template"
+                ),
+            })
+
+        functionality_results = run_functionality_tests()
+
+        sec_passed = sum(
+            1
+            for row in security_rows
+            if row["security_fixed"]
+        )
+
+        sec_total = len(security_rows)
+
+        func_passed = sum(
+            1
+            for result in functionality_results
+            if result["passed"]
+        )
+
+        func_total = len(functionality_results)
+
+        if sec_passed == sec_total and func_passed == func_total:
+            verdict = "VERIFIED"
+
+        elif sec_passed == sec_total and func_passed != func_total:
+            verdict = "REGRESSION"
+
+        else:
+            verdict = "FAILED"
+
+        return {
+            "report_type": "Controlled Demo Application Report",
+            "target": target,
+            "findings": vulnerable_findings,
+
+            "verification": {
+                "status": verdict,
+                "security_passed": sec_passed,
+                "security_total": sec_total,
+                "functionality_passed": func_passed,
+                "functionality_total": func_total,
+                "regressions": (
+                    func_total - func_passed
+                ),
+                "security_rows": security_rows,
+                "functionality_results": functionality_results,
+            },
+
+            "remediation": {
+                "source_access": True,
+                "patching_available": True,
+                "message": (
+                    "The target is the controlled SecureAI "
+                    "demo application. Approved remediation "
+                    "templates can be applied and verified."
+                ),
+            },
+        }
+
+    # =========================================================
+    # EXTERNAL WEBSITE REPORT
+    # =========================================================
+
+    external_rows = []
+
+    for finding in vulnerable_findings:
+
+        vuln_name = finding["vulnerability_class"]
+
+        remediation_key = {
+            "XSS": "Cross-Site Scripting",
+            "Cross-Site Scripting": "Cross-Site Scripting",
+            "SQLi": "SQL Injection",
+            "SQL Injection": "SQL Injection",
+            "Missing Security Headers": "Missing Security Headers",
+        }.get(vuln_name)
+
+        remediation = REMEDIATION_DATA.get(
+            remediation_key,
+            {}
+        )
+
+        external_rows.append({
+            "name": vuln_name,
+            "endpoint": finding.get("endpoint", "/"),
+            "severity": finding.get(
+                "severity",
+                remediation.get("severity", "UNKNOWN")
+            ),
+            "status": "REMEDIATION REQUIRED",
+            "recommended_template": remediation.get(
+                "template_title",
+                "Manual remediation required"
+            ),
+            "source_access": False,
+            "patch_applied": False,
+            "reason": (
+                "SecureAI does not have authorized source-code "
+                "or deployment access to this external application."
+            ),
+        })
+
+    return {
+        "report_type": "External Website Security Assessment",
+        "target": target,
+        "findings": vulnerable_findings,
+
+        "verification": {
+            "status": "GUIDANCE ONLY",
+            "security_verification": "LIMITED",
+            "functionality_verification": "NOT AVAILABLE",
+            "message": (
+                "SecureAI can assess the externally accessible "
+                "attack surface but cannot perform source-level "
+                "remediation or application functionality "
+                "verification without authorized application access."
+            ),
+            "security_rows": external_rows,
+        },
+
+        "remediation": {
+            "source_access": False,
+            "patching_available": False,
+            "message": (
+                "Remediation guidance has been generated. "
+                "The application owner/developer must apply "
+                "the required fix."
+            ),
+        },
+    }
 
 
-VERIFICATION_CASES = {
-    "VERIFIED": {
-        "verdict": "VERIFIED",
-        "stats": {
-            "sec_passed": 3,
-            "sec_total": 3,
-            "func_passed": 3,
-            "func_total": 3,
-            "regressions": 0,
-        },
-        "rows": [
-            {
-                "name": "SQL Injection",
-                "endpoint": "/search?query=...",
-                "before_note": "Bypass count > control, 500 on malformed input",
-                "sec_fixed": True,
-                "after_note": "Prepared statement bound safely, 0 syntax error",
-                "func_passed": True,
-                "func_test_name": "test_search",
-                "verdict": "VERIFIED",
-            },
-            {
-                "name": "Cross-Site Scripting (XSS)",
-                "endpoint": "/comments",
-                "before_note": "Raw <script> executed via | safe filter",
-                "sec_fixed": True,
-                "after_note": "Output safely encoded via Jinja2 autoescaping",
-                "func_passed": True,
-                "func_test_name": "test_comments",
-                "verdict": "VERIFIED",
-            },
-            {
-                "name": "Missing Security Headers",
-                "endpoint": "/",
-                "before_note": "Missing nosniff, DENY, and CSP headers",
-                "sec_fixed": True,
-                "after_note": "X-Content-Type, X-Frame, and CSP present",
-                "func_passed": True,
-                "func_test_name": "test_login",
-                "verdict": "VERIFIED",
-            },
-        ],
-    },
-    "REGRESSION": {
-        "verdict": "REGRESSION",
-        "stats": {
-            "sec_passed": 3,
-            "sec_total": 3,
-            "func_passed": 2,
-            "func_total": 3,
-            "regressions": 1,
-        },
-        "rows": [
-            {
-                "name": "SQL Injection",
-                "endpoint": "/search?query=...",
-                "before_note": "Bypass count > control, 500 on malformed input",
-                "sec_fixed": True,
-                "after_note": "Security fixed, but search returned empty results",
-                "func_passed": False,
-                "func_test_name": "test_search",
-                "verdict": "REGRESSION",
-            },
-            {
-                "name": "Cross-Site Scripting (XSS)",
-                "endpoint": "/comments",
-                "before_note": "Raw <script> executed via | safe filter",
-                "sec_fixed": True,
-                "after_note": "Output safely encoded via Jinja2 autoescaping",
-                "func_passed": True,
-                "func_test_name": "test_comments",
-                "verdict": "VERIFIED",
-            },
-            {
-                "name": "Missing Security Headers",
-                "endpoint": "/",
-                "before_note": "Missing nosniff, DENY, and CSP headers",
-                "sec_fixed": True,
-                "after_note": "X-Content-Type, X-Frame, and CSP present",
-                "func_passed": True,
-                "func_test_name": "test_login",
-                "verdict": "VERIFIED",
-            },
-        ],
-    },
-    "FAILED": {
-        "verdict": "FAILED",
-        "stats": {
-            "sec_passed": 2,
-            "sec_total": 3,
-            "func_passed": 3,
-            "func_total": 3,
-            "regressions": 0,
-        },
-        "rows": [
-            {
-                "name": "SQL Injection",
-                "endpoint": "/search?query=...",
-                "before_note": "Bypass count > control, 500 on malformed input",
-                "sec_fixed": False,
-                "after_note": "Error signal still detected on malformed input",
-                "func_passed": True,
-                "func_test_name": "test_search",
-                "verdict": "FAILED",
-            },
-            {
-                "name": "Cross-Site Scripting (XSS)",
-                "endpoint": "/comments",
-                "before_note": "Raw <script> executed via | safe filter",
-                "sec_fixed": True,
-                "after_note": "Output safely encoded via Jinja2 autoescaping",
-                "func_passed": True,
-                "func_test_name": "test_comments",
-                "verdict": "VERIFIED",
-            },
-            {
-                "name": "Missing Security Headers",
-                "endpoint": "/",
-                "before_note": "Missing nosniff, DENY, and CSP headers",
-                "sec_fixed": True,
-                "after_note": "X-Content-Type, X-Frame, and CSP present",
-                "func_passed": True,
-                "func_test_name": "test_login",
-                "verdict": "VERIFIED",
-            },
-        ],
-    },
-}
+@app.route("/api/report")
+def api_report():
+
+    try:
+
+        report = build_report_data()
+
+        if not report["target"]:
+            return jsonify({
+                "status": "error",
+                "message": "Run a scan before generating a report."
+            }), 400
+
+        target_name = (
+            report["target"]
+            .replace("https://", "")
+            .replace("http://", "")
+            .replace("/", "_")
+            .replace(":", "_")
+        )
+
+        filename = f"SecureAI_Report_{target_name}.html"
+
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+
+<title>SecureAI Security Report</title>
+
+<style>
+
+body {{
+    font-family: Arial, sans-serif;
+    margin: 40px;
+    color: #222;
+    line-height: 1.5;
+}}
+
+h1 {{
+    margin-bottom: 5px;
+}}
+
+h2 {{
+    margin-top: 30px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 6px;
+}}
+
+.badge {{
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 5px;
+    background: #eee;
+    font-weight: bold;
+}}
+
+.success {{
+    color: #087f23;
+}}
+
+.warning {{
+    color: #9a6700;
+}}
+
+.danger {{
+    color: #b42318;
+}}
+
+table {{
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}}
+
+th,
+td {{
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: left;
+    vertical-align: top;
+}}
+
+th {{
+    background: #f5f5f5;
+}}
+
+.small {{
+    color: #666;
+    font-size: 13px;
+}}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>SecureAI Security Report</h1>
+
+<p>
+<strong>Report Type:</strong>
+{report["report_type"]}
+</p>
+
+<p>
+<strong>Target:</strong>
+{report["target"]}
+</p>
+
+<h2>Executive Summary</h2>
+
+<p>
+This report was generated automatically by SecureAI
+from the current scan state.
+</p>
+
+<p>
+<strong>Final Status:</strong>
+<span class="badge">
+{report["verification"]["status"]}
+</span>
+</p>
+
+<h2>Findings</h2>
+"""
+
+        if report["findings"]:
+
+            html += """
+<table>
+
+<tr>
+<th>Vulnerability</th>
+<th>Endpoint</th>
+<th>Severity</th>
+<th>Validated</th>
+</tr>
+"""
+
+            for finding in report["findings"]:
+
+                severity = finding.get(
+                    "severity",
+                    "Not specified"
+                )
+
+                validated = finding.get(
+                    "validated",
+                    False
+                )
+
+                html += f"""
+<tr>
+
+<td>
+{finding.get("vulnerability_class", "Unknown")}
+</td>
+
+<td>
+{finding.get("endpoint", "/")}
+</td>
+
+<td>
+{severity}
+</td>
+
+<td>
+{"Yes" if validated else "No"}
+</td>
+
+</tr>
+"""
+
+            html += """
+</table>
+"""
+
+        else:
+
+            html += """
+<p>
+No supported vulnerabilities were present
+in the current scan findings.
+</p>
+"""
+
+        html += """
+<h2>Remediation</h2>
+"""
+
+        if report["remediation"]["source_access"]:
+
+            html += """
+<p class="success">
+
+<strong>Source access:</strong>
+Available for the controlled demo application.
+
+</p>
+
+<p>
+Approved remediation templates can be applied to the
+demo application's source code and subsequently verified.
+</p>
+"""
+
+        else:
+
+            html += """
+<p class="warning">
+
+<strong>Source access:</strong>
+Not available.
+
+</p>
+
+<p>
+<strong>Patch applied:</strong>
+No
+</p>
+
+<p>
+<strong>Reason:</strong>
+SecureAI does not have authorized source-code or
+deployment access to this external application.
+</p>
+
+<p>
+The report therefore provides remediation guidance only.
+The application owner or authorized developer must apply
+the recommended changes.
+</p>
+"""
+
+        html += """
+<h2>Verification</h2>
+"""
+
+        if report["report_type"] == "Controlled Demo Application Report":
+
+            verification = report["verification"]
+
+            html += f"""
+<table>
+
+<tr>
+<th>Security Checks</th>
+<th>Functionality Tests</th>
+<th>Regressions</th>
+<th>Final Verdict</th>
+</tr>
+
+<tr>
+
+<td>
+{verification["security_passed"]}/
+{verification["security_total"]}
+</td>
+
+<td>
+{verification["functionality_passed"]}/
+{verification["functionality_total"]}
+</td>
+
+<td>
+{verification["regressions"]}
+</td>
+
+<td>
+{verification["status"]}
+</td>
+
+</tr>
+
+</table>
+"""
+
+        else:
+
+            html += """
+<p class="warning">
+
+<strong>Security verification:</strong>
+Limited to externally observable behavior.
+
+</p>
+
+<p class="warning">
+
+<strong>Functionality verification:</strong>
+Not available because SecureAI does not have
+authorized application-level access.
+
+</p>
+
+<p>
+<strong>Patch verification:</strong>
+Pending application-owner remediation.
+</p>
+"""
+
+        html += """
+
+<h2>Security Engineering Boundary</h2>
+
+<p class="small">
+
+SecureAI is designed for controlled and authorized
+security assessment. External websites are assessed
+only through their accessible behavior.
+
+SecureAI does not claim to modify arbitrary external
+applications without authorized source-code or
+deployment access.
+
+</p>
+
+<p class="small">
+Generated by SecureAI.
+</p>
+
+</body>
+</html>
+"""
+
+        return Response(
+            html,
+            mimetype="text/html",
+            headers={
+                "Content-Disposition": (
+                    f"attachment; filename={filename}"
+                )
+            }
+        )
+
+    except Exception as e:
+
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 @app.route("/verification")
 def verification_page():
-    verdict_param = request.args.get("verdict", "VERIFIED").upper()
-    if verdict_param not in VERIFICATION_CASES:
-        verdict_param = "VERIFIED"
-    case = VERIFICATION_CASES[verdict_param]
+
+    if not CURRENT_SCAN["target"]:
+
+        functionality_results = [
+            {
+                "test": "login",
+                "passed": False,
+                "status_code": 0
+            },
+            {
+                "test": "search",
+                "passed": False,
+                "status_code": 0
+            },
+            {
+                "test": "comments",
+                "passed": False,
+                "status_code": 0
+            },
+        ]
+
+        return render_template(
+            "verification.html",
+            active="verification",
+            verdict="NOT SCANNED",
+            stats={
+                "sec_passed": 0,
+                "sec_total": 0,
+                "func_passed": 0,
+                "func_total": 0,
+                "regressions": 0,
+            },
+            rows=[],
+            functionality_results=functionality_results,
+            target=None,
+            is_external=False,
+        )
+
+    target = CURRENT_SCAN["target"]
+
+    # =========================================================
+    # CONTROLLED DEMO APPLICATION
+    # =========================================================
+
+    if is_demo_target(target):
+
+        security_checks = [
+            ("SQL Injection", check_demo_sqli),
+            ("XSS", check_demo_xss),
+            ("Missing Security Headers", check_security_headers),
+        ]
+
+        rows = []
+        sec_passed = 0
+
+        for name, check_fn in security_checks:
+
+            evidence = check_fn(target)
+
+            security_fixed = not evidence.get(
+                "vulnerable",
+                False
+            )
+
+            if security_fixed:
+                sec_passed += 1
+
+            rows.append({
+                "name": name,
+                "endpoint": evidence.get(
+                    "endpoint",
+                    "/"
+                ),
+                "before_note": (
+                    "Detected during initial security scan"
+                ),
+                "sec_fixed": security_fixed,
+                "after_note": (
+                    "Security check passed"
+                    if security_fixed
+                    else "Vulnerability still detected"
+                ),
+                "func_passed": True,
+                "func_test_name": "Security verification",
+                "verdict": (
+                    "VERIFIED"
+                    if security_fixed
+                    else "FAILED"
+                ),
+            })
+
+        security_total = len(security_checks)
+
+        functionality_results = run_functionality_tests()
+
+        if not functionality_results:
+
+            functionality_results = [
+                {
+                    "test": "login",
+                    "passed": False,
+                    "status_code": 0
+                },
+                {
+                    "test": "search",
+                    "passed": False,
+                    "status_code": 0
+                },
+                {
+                    "test": "comments",
+                    "passed": False,
+                    "status_code": 0
+                },
+            ]
+
+        func_passed = sum(
+            1
+            for result in functionality_results
+            if result["passed"]
+        )
+
+        func_total = len(functionality_results)
+
+        all_security_fixed = (
+            sec_passed == security_total
+        )
+
+        all_functionality_passed = (
+            func_passed == func_total
+        )
+
+        if (
+            all_security_fixed
+            and all_functionality_passed
+        ):
+            verdict = "VERIFIED"
+
+        elif (
+            all_security_fixed
+            and not all_functionality_passed
+        ):
+            verdict = "REGRESSION"
+
+        else:
+            verdict = "FAILED"
+
+        stats = {
+            "sec_passed": sec_passed,
+            "sec_total": security_total,
+            "func_passed": func_passed,
+            "func_total": func_total,
+            "regressions": (
+                func_total - func_passed
+            ),
+        }
+
+        return render_template(
+            "verification.html",
+            active="verification",
+            verdict=verdict,
+            stats=stats,
+            rows=rows,
+            target=target,
+            functionality_results=functionality_results,
+            is_external=False,
+        )
+
+    # =========================================================
+    # EXTERNAL WEBSITE
+    # =========================================================
+
+    rows = []
+
+    vulnerable_findings = [
+        f
+        for f in CURRENT_SCAN["findings"]
+        if f.get("first_pass_vulnerable") is True
+    ]
+
+    for finding in vulnerable_findings:
+
+        rows.append({
+            "name": finding["vulnerability_class"],
+            "endpoint": finding.get("endpoint", "/"),
+            "before_note": (
+                "Finding detected during external "
+                "security assessment"
+            ),
+            "sec_fixed": False,
+            "after_note": (
+                "Source-level remediation unavailable"
+            ),
+            "func_passed": False,
+            "func_test_name": (
+                "Not available — external source "
+                "access unavailable"
+            ),
+            "verdict": "GUIDANCE ONLY",
+        })
+
+    security_total = len(rows)
+
+    functionality_results = []
+
+    stats = {
+        "sec_passed": 0,
+        "sec_total": security_total,
+        "func_passed": 0,
+        "func_total": 0,
+        "regressions": 0,
+    }
+
     return render_template(
         "verification.html",
         active="verification",
-        verdict=case["verdict"],
-        stats=case["stats"],
-        rows=case["rows"],
+        verdict="GUIDANCE ONLY",
+        stats=stats,
+        rows=rows,
+        target=target,
+        functionality_results=functionality_results,
+        is_external=True,
     )
 
 

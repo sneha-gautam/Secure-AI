@@ -13,83 +13,116 @@
 <!-- Verdict Filter / Mode Switcher -->
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
     <div style="font-size: 13px; color: var(--muted-foreground);">
-        Displaying pipeline verdict evaluation:
+        Live verification result for:
+        <strong style="color: var(--foreground);">
+            {{ target or 'No target selected' }}
+        </strong>
     </div>
+
+    <div style="font-size: 12px; color: var(--muted-foreground);">
+        Security rescan + functionality verification
+    </div>
+
     <div style="display: flex; gap: 6px;">
-        <a href="/verification?verdict=VERIFIED" class="btn {{ 'btn-primary' if verdict == 'VERIFIED' else 'btn-ghost' }}" style="{{ 'border: 1px solid var(--border);' if verdict != 'VERIFIED' else '' }} height: 32px; padding: 0 12px; font-size: 12px;">
-            {{ m.icon('check', 14) }}VERIFIED (Normal)
-        </a>
-        <a href="/verification?verdict=REGRESSION" class="btn {{ 'btn-primary' if verdict == 'REGRESSION' else 'btn-ghost' }}" style="{{ 'border: 1px solid var(--border);' if verdict != 'REGRESSION' else '' }} height: 32px; padding: 0 12px; font-size: 12px;">
-            {{ m.icon('alert', 14) }}REGRESSION (Rollback)
-        </a>
-        <a href="/verification?verdict=FAILED" class="btn {{ 'btn-primary' if verdict == 'FAILED' else 'btn-ghost' }}" style="{{ 'border: 1px solid var(--border);' if verdict != 'FAILED' else '' }} height: 32px; padding: 0 12px; font-size: 12px;">
-            {{ m.icon('alert', 14) }}FAILED (Not Fixed)
-        </a>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <a href="/verification" class="btn btn-ghost">
+        {{ m.icon('shield', 14) }}
+        Re-run Verification
+    </a>
+
+    {% if target %}
+    <a href="/api/report" class="btn btn-primary">
+        {{ m.icon('file', 14) }}
+        Generate Report
+    </a>
+    {% endif %}
+</div>
     </div>
 </div>
 
 <!-- Final Verdict Banner -->
-{% if verdict == 'VERIFIED' %}
-<div class="panel" style="background-color: var(--success-soft); border-color: var(--success); margin-bottom: 24px; padding: 24px;">
-    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-        <div style="display: flex; align-items: center; gap: 16px;">
-            <div style="width: 48px; height: 48px; border-radius: 8px; background-color: var(--success); color: var(--background); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+{% if verdict == 'GUIDANCE ONLY' %}
+
+<div class="panel"
+     style="background-color: var(--warning-soft);
+            border-color: var(--warning);
+            margin-bottom: 24px;
+            padding: 24px;">
+
+    <div style="display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 16px;">
+
+        <div style="display: flex;
+                    align-items: center;
+                    gap: 16px;">
+
+            <div style="width: 48px;
+                        height: 48px;
+                        border-radius: 8px;
+                        background-color: var(--warning);
+                        color: var(--background);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;">
+
                 {{ m.icon('shield', 26) }}
+
             </div>
+
             <div>
-                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: var(--success); margin-bottom: 4px;">Final Verdict</div>
-                <h2 class="font-display" style="font-size: 26px; margin: 0; color: var(--foreground); line-height: 1.2;">PIPELINE STATUS: VERIFIED</h2>
-                <p style="margin: 6px 0 0 0; font-size: 14px; color: var(--foreground); opacity: 0.9;">
-                    All 3 security vulnerabilities resolved. Core application functionality intact with 0 regressions detected.
+
+                <div style="font-size: 11px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.16em;
+                            color: var(--warning);
+                            margin-bottom: 4px;">
+
+                    External Target
+
+                </div>
+
+                <h2 class="font-display"
+                    style="font-size: 26px;
+                           margin: 0;
+                           color: var(--foreground);
+                           line-height: 1.2;">
+
+                    REMEDIATION: GUIDANCE ONLY
+
+                </h2>
+
+                <p style="margin: 6px 0 0 0;
+                          font-size: 14px;
+                          color: var(--foreground);
+                          opacity: 0.9;">
+
+                    SecureAI can assess this external target,
+                    but cannot apply source-level fixes or verify
+                    application functionality without authorized access.
+
                 </p>
+
             </div>
+
         </div>
-        <div>
-            <span class="pill pill-success" style="font-size: 12px; padding: 6px 12px;">Security Fixed &bull; Tests Passed</span>
-        </div>
+
+        <span class="pill pill-warning"
+              style="font-size: 12px;
+                     padding: 6px 12px;">
+
+            Source Access Unavailable
+
+        </span>
+
     </div>
+
 </div>
-{% elif verdict == 'REGRESSION' %}
-<div class="panel" style="background-color: var(--danger-soft); border-color: var(--danger); margin-bottom: 24px; padding: 24px;">
-    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-        <div style="display: flex; align-items: center; gap: 16px;">
-            <div style="width: 48px; height: 48px; border-radius: 8px; background-color: var(--danger); color: var(--background); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                {{ m.icon('alert', 26) }}
-            </div>
-            <div>
-                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: var(--danger); margin-bottom: 4px;">Final Verdict</div>
-                <h2 class="font-display" style="font-size: 26px; margin: 0; color: var(--foreground); line-height: 1.2;">PIPELINE STATUS: REGRESSION</h2>
-                <p style="margin: 6px 0 0 0; font-size: 14px; color: var(--foreground); opacity: 0.9;">
-                    Security patch verified, but functionality verification failed. Automatic rollback has been executed.
-                </p>
-            </div>
-        </div>
-        <div>
-            <span class="pill pill-danger" style="font-size: 12px; padding: 6px 12px;">Rollback Executed (.bak restored)</span>
-        </div>
-    </div>
-</div>
-{% else %}
-<div class="panel" style="background-color: var(--warning-soft); border-color: var(--warning); margin-bottom: 24px; padding: 24px;">
-    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-        <div style="display: flex; align-items: center; gap: 16px;">
-            <div style="width: 48px; height: 48px; border-radius: 8px; background-color: var(--warning); color: var(--background); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                {{ m.icon('alert', 26) }}
-            </div>
-            <div>
-                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: var(--warning); margin-bottom: 4px;">Final Verdict</div>
-                <h2 class="font-display" style="font-size: 26px; margin: 0; color: var(--foreground); line-height: 1.2;">PIPELINE STATUS: FAILED</h2>
-                <p style="margin: 6px 0 0 0; font-size: 14px; color: var(--foreground); opacity: 0.9;">
-                    Security rescan detected that the vulnerability remains active after patch application.
-                </p>
-            </div>
-        </div>
-        <div>
-            <span class="pill pill-warning" style="font-size: 12px; padding: 6px 12px;">Security Not Fixed</span>
-        </div>
-    </div>
-</div>
-{% endif %}
+
+{% elif verdict == 'VERIFIED' %}
 
 <!-- Verification Metrics Grid -->
 <div class="grid-3">
@@ -97,41 +130,68 @@
         <div class="stat-row">
             <div>
                 <div class="stat-label">Security Checks</div>
-                <div class="stat-value font-display" style="color: var(--success);">{{ stats.sec_passed }}<span class="stat-of">/ {{ stats.sec_total }}</span></div>
+
+                <div class="stat-value font-display" style="color: var(--success);">
+                    {{ stats.sec_passed }}
+                    <span class="stat-of">/ {{ stats.sec_total }}</span>
+                </div>
             </div>
-            <div class="icon-box success">{{ m.icon('shield', 18) }}</div>
+
+            <div class="icon-box success">
+                {{ m.icon('shield', 18) }}
+            </div>
         </div>
-        <div class="stat-note"><b>100% verified</b> vulnerabilities eliminated</div>
+
+        <div class="stat-note">
+            {% set remaining = stats.sec_total - stats.sec_passed %}
+
+            {% if remaining == 0 %}
+                <b>All supported security checks passed</b>
+            {% else %}
+                <b>{{ remaining }} security issue(s) remain</b>
+            {% endif %}
+        </div>
     </div>
 
     <div class="panel">
         <div class="stat-row">
             <div>
                 <div class="stat-label">Functionality Gates</div>
+
                 <div class="stat-value font-display" style="color: {{ 'var(--success)' if stats.func_passed == stats.func_total else 'var(--danger)' }};">
-                    {{ stats.func_passed }}<span class="stat-of">/ {{ stats.func_total }}</span>
+                    {{ stats.func_passed }}
+                    <span class="stat-of">/ {{ stats.func_total }}</span>
                 </div>
             </div>
+
             <div class="icon-box {{ 'success' if stats.func_passed == stats.func_total else 'danger' }}">
                 {{ m.icon('check' if stats.func_passed == stats.func_total else 'alert', 18) }}
             </div>
         </div>
-        <div class="stat-note">Login, Search, and Comments verified</div>
+
+        <div class="stat-note">
+            {{ stats.func_passed }}/{{ stats.func_total }} functionality tests passed
+        </div>
     </div>
 
     <div class="panel">
         <div class="stat-row">
             <div>
                 <div class="stat-label">Regressions Detected</div>
+
                 <div class="stat-value font-display" style="color: {{ 'var(--success)' if stats.regressions == 0 else 'var(--danger)' }};">
                     {{ stats.regressions }}
                 </div>
             </div>
+
             <div class="icon-box {{ 'success' if stats.regressions == 0 else 'danger' }}">
                 {{ m.icon('activity', 18) }}
             </div>
         </div>
-        <div class="stat-note">{{ 'Zero functional regressions' if stats.regressions == 0 else 'Rollback triggered automatically' }}</div>
+
+        <div class="stat-note">
+            {{ 'Zero functional regressions' if stats.regressions == 0 else 'Rollback triggered automatically' }}
+        </div>
     </div>
 </div>
 
@@ -142,7 +202,10 @@
             <h2>Before / After Remediation Verification Matrix</h2>
             <p>Side-by-side comparison of baseline vulnerability scans vs post-patch verification</p>
         </div>
-        <span class="pill pill-success">{{ rows|length }} Checks Completed</span>
+
+        <span class="pill pill-success">
+            {{ rows|length }} Checks Completed
+        </span>
     </div>
 
     <div style="overflow-x: auto;">
@@ -156,6 +219,7 @@
                     <th style="padding: 14px 20px; text-align: right;">Final Verdict</th>
                 </tr>
             </thead>
+
             <tbody>
                 {% for r in rows %}
                 <tr style="border-bottom: 1px solid var(--border); transition: background-color .15s;">
@@ -164,46 +228,78 @@
                             {{ m.icon('shield', 15) }}
                             <span>{{ r.name }}</span>
                         </div>
+
                         <div style="font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted-foreground); margin-top: 3px;">
                             {{ r.endpoint }}
                         </div>
                     </td>
+
                     <td style="padding: 16px 16px;">
-                        <div style="display: flex; align-items: center; gap: 6px; color: var(--danger); font-weight: 500;">
-                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--danger-soft);">✗</span>
-                            <span>Vulnerable</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+    <span style="color: var(--danger);">
+        {{ m.icon('alert', 16) }}
+    </span>
+    <span style="color: var(--danger);">
+        Vulnerable
+    </span>
+</div>
+<div class="muted">
+    Detected during initial security scan
+</div>
+
+                        <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 2px;">
+                            {{ r.before_note }}
                         </div>
-                        <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 2px;">{{ r.before_note }}</div>
                     </td>
+
                     <td style="padding: 16px 16px;">
                         {% if r.sec_fixed %}
                         <div style="display: flex; align-items: center; gap: 6px; color: var(--success); font-weight: 500;">
-                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--success-soft);">✓</span>
+                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--success-soft);">
+                                ✓
+                            </span>
                             <span>Security Fixed</span>
                         </div>
-                        <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 2px;">{{ r.after_note }}</div>
+
+                        <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 2px;">
+                            {{ r.after_note }}
+                        </div>
                         {% else %}
                         <div style="display: flex; align-items: center; gap: 6px; color: var(--danger); font-weight: 500;">
-                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--danger-soft);">✗</span>
+                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--danger-soft);">
+                                ✗
+                            </span>
                             <span>Not Fixed</span>
                         </div>
                         {% endif %}
                     </td>
+
                     <td style="padding: 16px 16px;">
                         {% if r.func_passed %}
                         <div style="display: flex; align-items: center; gap: 6px; color: var(--success); font-weight: 500;">
-                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--success-soft);">✓</span>
+                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--success-soft);">
+                                ✓
+                            </span>
                             <span>Passed</span>
                         </div>
-                        <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 2px;">{{ r.func_test_name }} (200 OK)</div>
+
+                        <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 2px;">
+                            {{ r.func_test_name }} (200 OK)
+                        </div>
                         {% else %}
                         <div style="display: flex; align-items: center; gap: 6px; color: var(--danger); font-weight: 500;">
-                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--danger-soft);">✗</span>
+                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--danger-soft);">
+                                ✗
+                            </span>
                             <span>Regression</span>
                         </div>
-                        <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 2px;">{{ r.func_test_name }} failed</div>
+
+                        <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 2px;">
+                            {{ r.func_test_name }} failed
+                        </div>
                         {% endif %}
                     </td>
+
                     <td style="padding: 16px 20px; text-align: right;">
                         {% if r.verdict == 'VERIFIED' %}
                             <span class="pill pill-success">VERIFIED</span>
@@ -219,7 +315,7 @@
         </table>
     </div>
 </div>
-
+{% if not is_external %}
 <!-- Functionality Verification Detail Panel -->
 <div class="panel no-pad">
     <div class="panel-head">
@@ -227,40 +323,91 @@
             <h2>Core Functionality Test Suite</h2>
             <p>Automated test results from functionality.py against live application endpoints</p>
         </div>
-        <span class="pill pill-success">3/3 Passed</span>
+
+       <span class="pill {{ 'pill-success' if stats.func_passed == stats.func_total else 'pill-danger' }}">
+    {{ stats.func_passed }}/{{ stats.func_total }} Passed
+</span>
     </div>
+
     <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--background); border: 1px solid var(--border); border-radius: 6px;">
             <div style="display: flex; align-items: center; gap: 12px;">
-                <span style="color: var(--success);">{{ m.icon('check', 16) }}</span>
+                {% set login_result = functionality_results[0] %}
+                <span style="color: {{ 'var(--success)' if login_result.passed else 'var(--danger)' }};">
+                    {{ m.icon('check' if login_result.passed else 'alert', 16) }}
+                </span>
+
                 <div>
-                    <div style="font-weight: 600; font-size: 13px;">Authentication Test (<code style="color: var(--primary);">POST /login</code>)</div>
-                    <div style="font-size: 12px; color: var(--muted-foreground);">Validates session cookie generation and authenticated response content.</div>
+                    <div style="font-weight: 600; font-size: 13px;">
+                        Login Authentication Test
+                        (<code style="color: var(--primary);">POST /login</code>)
+                    </div>
+
+                    <div style="font-size: 12px; color: var(--muted-foreground);">
+                        Validates authentication and login flow.
+                    </div>
                 </div>
             </div>
-            <span class="pill pill-success">Passed (200 OK)</span>
+
+            <span class="pill {{ 'pill-success' if login_result.passed else 'pill-danger' }}">
+                {{ 'Passed' if login_result.passed else 'Failed' }} ({{ login_result.status_code }})
+            </span>
         </div>
+
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--background); border: 1px solid var(--border); border-radius: 6px;">
             <div style="display: flex; align-items: center; gap: 12px;">
-                <span style="color: var(--success);">{{ m.icon('check', 16) }}</span>
+                {% set search_result = functionality_results[1] %}
+
+                <span style="color: {{ 'var(--success)' if search_result.passed else 'var(--danger)' }};">
+                    {{ m.icon('check' if search_result.passed else 'alert', 16) }}
+                </span>
+
                 <div>
-                    <div style="font-weight: 600; font-size: 13px;">Search Query Test (<code style="color: var(--primary);">GET /search?query=Security</code>)</div>
-                    <div style="font-size: 12px; color: var(--muted-foreground);">Validates parameterized database retrieval returns expected records.</div>
+                    <div style="font-weight: 600; font-size: 13px;">
+                        Search Query Test
+                        (<code style="color: var(--primary);">GET /search?query=Security</code>)
+                    </div>
+
+                    <div style="font-size: 12px; color: var(--muted-foreground);">
+                        Validates parameterized database retrieval returns expected records.
+                    </div>
                 </div>
             </div>
-            <span class="pill pill-success">Passed (200 OK)</span>
+
+            <span class="pill {{ 'pill-success' if search_result.passed else 'pill-danger' }}">
+                {{ 'Passed' if search_result.passed else 'Failed' }} ({{ search_result.status_code }})
+            </span>
         </div>
+
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--background); border: 1px solid var(--border); border-radius: 6px;">
             <div style="display: flex; align-items: center; gap: 12px;">
-                <span style="color: var(--success);">{{ m.icon('check', 16) }}</span>
+                {% set comments_result = functionality_results[2] %}
+
+                <span style="color: {{ 'var(--success)' if comments_result.passed else 'var(--danger)' }};">
+                    {{ m.icon('check' if comments_result.passed else 'alert', 16) }}
+                </span>
+
                 <div>
-                    <div style="font-weight: 600; font-size: 13px;">Comments Post &amp; Read (<code style="color: var(--primary);">POST /comments</code>, <code style="color: var(--primary);">GET /comments</code>)</div>
-                    <div style="font-size: 12px; color: var(--muted-foreground);">Validates submission and safe escaped rendering of new user comments.</div>
+                    <div style="font-weight: 600; font-size: 13px;">
+                        Comments Post &amp; Read
+                        (<code style="color: var(--primary);">POST /comments</code>,
+                        <code style="color: var(--primary);">GET /comments</code>)
+                    </div>
+
+                    <div style="font-size: 12px; color: var(--muted-foreground);">
+                        Validates submission and safe escaped rendering of new user comments.
+                    </div>
                 </div>
             </div>
-            <span class="pill pill-success">Passed (200 OK)</span>
+
+            <span class="pill {{ 'pill-success' if comments_result.passed else 'pill-danger' }}">
+                {{ 'Passed' if comments_result.passed else 'Failed' }} ({{ comments_result.status_code }})
+            </span>
         </div>
+
     </div>
 </div>
-
-{% endblock %}
+{% endif %}
+{% endif %}
+{% endblock %} 

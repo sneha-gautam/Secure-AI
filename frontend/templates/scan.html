@@ -127,6 +127,7 @@
 
 const btn = document.getElementById('scan-btn');
 const btnLabel = document.getElementById('scan-btn-label');
+const targetInput = document.getElementById('target');
 
 const fill = document.getElementById('progress-fill');
 const pct = document.getElementById('progress-pct');
@@ -223,11 +224,25 @@ btn.addEventListener('click', async () => {
         /*
          * Real SecureAI backend call
          */
-        const response = await fetch('/api/scan', {
+        const targetUrl = targetInput.value.trim();
 
-            method: 'POST'
+if (!targetUrl) {
+    throw new Error('Target URL is required.');
+}
 
-        });
+const response = await fetch('/api/scan', {
+
+    method: 'POST',
+
+    headers: {
+        'Content-Type': 'application/json'
+    },
+
+    body: JSON.stringify({
+        target_url: targetUrl
+    })
+
+});
 
 
         const data = await response.json();
@@ -250,6 +265,10 @@ btn.addEventListener('click', async () => {
             'scanResults',
             JSON.stringify(data.findings)
         );
+        sessionStorage.setItem(
+    'scanTarget',
+    data.target
+);
 
 
         /*

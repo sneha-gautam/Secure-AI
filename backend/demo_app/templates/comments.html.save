@@ -36,17 +36,11 @@
 {% if comments %}
     <ul>
                {% for comment in comments %}
-    <li>
-        <strong>{{ comment["username"] }}</strong>:
-
-        {% if vuln_xss_enabled %}
-            {{ comment["comment"] | safe }}
-        {% else %}
-            {{ comment["comment"] }}
-        {% endif %}
-
-    </li>
-{% endfor %}
+            <li>
+                <strong>{{ comment["username"] }}</strong>:
+                {{ comment["c{{ comment["comment"] }}
+            </li>
+        {% endfor %}
     </ul>
 {% else %}
     <p>No comments yet.</p>
